@@ -1,0 +1,16 @@
+{{define "partials/debate-content.html"}}
+<div class="bg-white shadow-sm rounded-lg p-6">
+    <h2 class="text-lg font-bold text-gray-900 mb-4">{{.Debate.Topic}}</h2>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+        <div class="text-sm">
+            <span class="text-gray-500">Agent A:</span>
+            <span class="font-medium">{{.Debate.AgentA.Name}}</span>
+        </div>
+        <div class="text-sm">
+            <span class="text-gray-500">Agent B:</span>
+            <span class="font-medium">{{.Debate.AgentB.Name}}</span>
+        </div>
+    </div>
+    {{template "turns-content" .}}
+</div>
+{{end}}

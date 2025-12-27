@@ -1,0 +1,25 @@
+{{define "partials/debates-list.html"}}
+{{if not .Debates}}
+<div class="text-center py-12">
+    <p class="text-gray-500">No debates found.</p>
+</div>
+{{else}}
+<div class="space-y-4">
+    {{range .Debates}}
+    <a href="/debates/{{.ID}}" class="block bg-white shadow-sm rounded-lg p-4 hover:shadow-md transition-shadow">
+        <div class="flex justify-between items-start">
+            <div>
+                <h3 class="font-medium text-gray-900">{{truncate .Topic 60}}</h3>
+                <div class="mt-1 text-sm text-gray-500">
+                    {{.AgentA}} vs {{.AgentB}}
+                </div>
+            </div>
+            <span class="px-2 py-1 rounded-full text-xs font-medium {{statusColor .Status}}">
+                {{.Status}}
+            </span>
+        </div>
+    </a>
+    {{end}}
+</div>
+{{end}}
+{{end}}
