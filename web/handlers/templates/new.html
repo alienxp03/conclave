@@ -24,24 +24,37 @@
             <p class="mt-1 text-xs text-gray-500">What should the AI agents debate about?</p>
         </div>
 
-        <!-- Debate Style -->
-        <div>
-            <label for="style" class="block text-sm font-medium text-gray-700">Debate Style</label>
-            <select
-                id="style"
-                name="style"
-                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
-            >
-                {{range .Styles}}
-                <option value="{{.ID}}" {{if eq .ID "collaborative"}}selected{{end}}>{{.Name}} - {{.Description}}</option>
-                {{end}}
-            </select>
+        <!-- Debate Style & Mode -->
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label for="style" class="block text-sm font-medium text-gray-700">Debate Style</label>
+                <select
+                    id="style"
+                    name="style"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
+                >
+                    {{range .Styles}}
+                    <option value="{{.ID}}" {{if eq .ID "collaborative"}}selected{{end}}>{{.Name}}</option>
+                    {{end}}
+                </select>
+            </div>
+            <div>
+                <label for="mode" class="block text-sm font-medium text-gray-700">Execution Mode</label>
+                <select
+                    id="mode"
+                    name="mode"
+                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
+                >
+                    <option value="automatic" selected>Automatic - Run all turns</option>
+                    <option value="turn_by_turn">Turn-by-turn - Manual control</option>
+                </select>
+            </div>
         </div>
 
         <!-- Agent A -->
         <div class="border rounded-lg p-4 bg-blue-50">
             <h3 class="font-medium text-gray-900 mb-3">Agent A</h3>
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-3 gap-4">
                 <div>
                     <label for="agent_a_provider" class="block text-sm font-medium text-gray-700">Provider</label>
                     <select
@@ -50,9 +63,19 @@
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
                     >
                         {{range .Providers}}
-                        <option value="{{.Name}}">{{.DisplayName}}</option>
+                        <option value="{{.Name}}" data-models="{{range $i, $m := .Models}}{{if $i}},{{end}}{{$m}}{{end}}">{{.DisplayName}}</option>
                         {{end}}
                     </select>
+                </div>
+                <div>
+                    <label for="agent_a_model" class="block text-sm font-medium text-gray-700">Model (optional)</label>
+                    <input
+                        type="text"
+                        id="agent_a_model"
+                        name="agent_a_model"
+                        placeholder="Default model"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
+                    >
                 </div>
                 <div>
                     <label for="agent_a_persona" class="block text-sm font-medium text-gray-700">Persona</label>
@@ -62,7 +85,7 @@
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
                     >
                         {{range .Personas}}
-                        <option value="{{.ID}}" {{if eq .ID "pragmatist"}}selected{{end}}>{{.Name}} - {{.Description}}</option>
+                        <option value="{{.ID}}" {{if eq .ID "pragmatist"}}selected{{end}}>{{.Name}}</option>
                         {{end}}
                     </select>
                 </div>
@@ -72,7 +95,7 @@
         <!-- Agent B -->
         <div class="border rounded-lg p-4 bg-green-50">
             <h3 class="font-medium text-gray-900 mb-3">Agent B</h3>
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-3 gap-4">
                 <div>
                     <label for="agent_b_provider" class="block text-sm font-medium text-gray-700">Provider</label>
                     <select
@@ -81,9 +104,19 @@
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
                     >
                         {{range .Providers}}
-                        <option value="{{.Name}}">{{.DisplayName}}</option>
+                        <option value="{{.Name}}" data-models="{{range $i, $m := .Models}}{{if $i}},{{end}}{{$m}}{{end}}">{{.DisplayName}}</option>
                         {{end}}
                     </select>
+                </div>
+                <div>
+                    <label for="agent_b_model" class="block text-sm font-medium text-gray-700">Model (optional)</label>
+                    <input
+                        type="text"
+                        id="agent_b_model"
+                        name="agent_b_model"
+                        placeholder="Default model"
+                        class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
+                    >
                 </div>
                 <div>
                     <label for="agent_b_persona" class="block text-sm font-medium text-gray-700">Persona</label>
@@ -93,7 +126,7 @@
                         class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2"
                     >
                         {{range .Personas}}
-                        <option value="{{.ID}}" {{if eq .ID "skeptic"}}selected{{end}}>{{.Name}} - {{.Description}}</option>
+                        <option value="{{.ID}}" {{if eq .ID "skeptic"}}selected{{end}}>{{.Name}}</option>
                         {{end}}
                     </select>
                 </div>

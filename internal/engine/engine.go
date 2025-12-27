@@ -71,6 +71,12 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 		maxTurns = 5
 	}
 
+	// Set default mode
+	mode := config.Mode
+	if mode == "" {
+		mode = core.ModeAutomatic
+	}
+
 	now := time.Now()
 	debate := &core.Debate{
 		ID:    uuid.New().String(),
@@ -79,15 +85,18 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 			ID:       uuid.New().String(),
 			Name:     fmt.Sprintf("Agent A (%s)", persona.Get(config.AgentAPersona).Name),
 			Provider: config.AgentAProvider,
+			Model:    config.AgentAModel,
 			Persona:  config.AgentAPersona,
 		},
 		AgentB: core.Agent{
 			ID:       uuid.New().String(),
 			Name:     fmt.Sprintf("Agent B (%s)", persona.Get(config.AgentBPersona).Name),
 			Provider: config.AgentBProvider,
+			Model:    config.AgentBModel,
 			Persona:  config.AgentBPersona,
 		},
 		Style:     config.Style,
+		Mode:      mode,
 		MaxTurns:  maxTurns,
 		Status:    core.StatusPending,
 		CreatedAt: now,
@@ -230,8 +239,13 @@ func (e *Engine) executeTurn(ctx context.Context, debate *core.Debate, agent cor
 		return nil, fmt.Errorf("failed to build prompt: %w", err)
 	}
 
-	// Generate response
-	response, err := prov.Generate(ctx, prompt)
+	// Generate response (with model if specified)
+	var response string
+	if agent.Model != "" {
+		response, err = prov.GenerateWithModel(ctx, prompt, agent.Model)
+	} else {
+		response, err = prov.Generate(ctx, prompt)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate response: %w", err)
 	}
@@ -329,7 +343,7 @@ func (e *Engine) buildPrompt(debate *core.Debate, agent core.Agent, turns []*cor
 	return fullPrompt, nil
 }
 
-// generateConclusion generates the final conclusion for the debate.
+// generateConclusion generates the final conclusion for the debate with voting.
 func (e *Engine) generateConclusion(ctx context.Context, debate *core.Debate) (*core.Conclusion, error) {
 	turns, err := e.storage.GetTurns(debate.ID)
 	if err != nil {
@@ -337,6 +351,49 @@ func (e *Engine) generateConclusion(ctx context.Context, debate *core.Debate) (*
 	}
 
 	// Build history
+	history := e.buildDebateHistory(debate, turns)
+
+	conclusion := &core.Conclusion{}
+
+	// Get votes from both agents
+	voteA, err := e.getAgentVote(ctx, debate, debate.AgentA, history)
+	if err == nil {
+		conclusion.AgentAVote = voteA
+	}
+
+	voteB, err := e.getAgentVote(ctx, debate, debate.AgentB, history)
+	if err == nil {
+		conclusion.AgentBVote = voteB
+	}
+
+	// Determine consensus based on votes
+	if conclusion.AgentAVote != nil && conclusion.AgentBVote != nil {
+		conclusion.Agreed = conclusion.AgentAVote.Agrees && conclusion.AgentBVote.Agrees
+	}
+
+	// Generate summary
+	summary, err := e.generateSummary(ctx, debate, history, conclusion)
+	if err == nil {
+		conclusion.Summary = summary
+	} else {
+		conclusion.Summary = "Debate concluded."
+	}
+
+	// Get individual positions if no consensus
+	if !conclusion.Agreed {
+		if conclusion.AgentAVote != nil {
+			conclusion.AgentASummary = conclusion.AgentAVote.Reasoning
+		}
+		if conclusion.AgentBVote != nil {
+			conclusion.AgentBSummary = conclusion.AgentBVote.Reasoning
+		}
+	}
+
+	return conclusion, nil
+}
+
+// buildDebateHistory builds a formatted string of the debate history.
+func (e *Engine) buildDebateHistory(debate *core.Debate, turns []*core.Turn) string {
 	var historyBuilder strings.Builder
 	for _, t := range turns {
 		var agentName string
@@ -347,58 +404,97 @@ func (e *Engine) generateConclusion(ctx context.Context, debate *core.Debate) (*
 		}
 		historyBuilder.WriteString(fmt.Sprintf("\n--- %s (Turn %d) ---\n%s\n", agentName, t.Number, t.Content))
 	}
+	return historyBuilder.String()
+}
 
-	// Use agent A to summarize
-	prov, err := e.registry.Get(debate.AgentA.Provider)
+// getAgentVote asks an agent to vote on whether consensus was reached.
+func (e *Engine) getAgentVote(ctx context.Context, debate *core.Debate, agent core.Agent, history string) (*core.Vote, error) {
+	prov, err := e.registry.Get(agent.Provider)
 	if err != nil {
 		return nil, err
 	}
 
-	summaryPrompt := fmt.Sprintf(`You were part of a debate on: "%s"
+	votePrompt := fmt.Sprintf(`You participated in a debate on: "%s"
 
 Here is the full debate:
 %s
 
-Analyze this debate and provide a conclusion:
-1. Did the debaters reach a consensus? (yes/no)
-2. If yes, what was the agreed conclusion?
-3. If no, summarize each side's final position.
+Now it's time to conclude. Please vote on whether you and your opponent reached a meaningful consensus.
+
+Consider:
+- Did you find common ground on the main points?
+- Are there fundamental disagreements that remain?
+- Would you be comfortable with a joint conclusion?
 
 Respond in this exact format:
-CONSENSUS: [yes/no]
-SUMMARY: [overall summary of the debate outcome]
-AGENT_A_POSITION: [Agent A's final position, if no consensus]
-AGENT_B_POSITION: [Agent B's final position, if no consensus]`, debate.Topic, historyBuilder.String())
+VOTE: [AGREE/DISAGREE]
+REASONING: [Brief explanation of your vote - 1-2 sentences]`, debate.Topic, history)
 
-	response, err := prov.Generate(ctx, summaryPrompt)
+	var response string
+	if agent.Model != "" {
+		response, err = prov.GenerateWithModel(ctx, votePrompt, agent.Model)
+	} else {
+		response, err = prov.Generate(ctx, votePrompt)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse response (simple parsing)
-	conclusion := &core.Conclusion{}
+	vote := &core.Vote{
+		AgentID: agent.ID,
+	}
 
 	lines := strings.Split(response, "\n")
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "CONSENSUS:") {
-			val := strings.TrimSpace(strings.TrimPrefix(line, "CONSENSUS:"))
-			conclusion.Agreed = strings.EqualFold(val, "yes")
-		} else if strings.HasPrefix(line, "SUMMARY:") {
-			conclusion.Summary = strings.TrimSpace(strings.TrimPrefix(line, "SUMMARY:"))
-		} else if strings.HasPrefix(line, "AGENT_A_POSITION:") {
-			conclusion.AgentASummary = strings.TrimSpace(strings.TrimPrefix(line, "AGENT_A_POSITION:"))
-		} else if strings.HasPrefix(line, "AGENT_B_POSITION:") {
-			conclusion.AgentBSummary = strings.TrimSpace(strings.TrimPrefix(line, "AGENT_B_POSITION:"))
+		if strings.HasPrefix(line, "VOTE:") {
+			val := strings.TrimSpace(strings.TrimPrefix(line, "VOTE:"))
+			vote.Agrees = strings.EqualFold(val, "AGREE")
+		} else if strings.HasPrefix(line, "REASONING:") {
+			vote.Reasoning = strings.TrimSpace(strings.TrimPrefix(line, "REASONING:"))
 		}
 	}
 
-	// If parsing failed, use the whole response as summary
-	if conclusion.Summary == "" {
-		conclusion.Summary = response
+	// If no reasoning found, use full response
+	if vote.Reasoning == "" {
+		vote.Reasoning = response
 	}
 
-	return conclusion, nil
+	return vote, nil
+}
+
+// generateSummary generates the final summary of the debate.
+func (e *Engine) generateSummary(ctx context.Context, debate *core.Debate, history string, conclusion *core.Conclusion) (string, error) {
+	prov, err := e.registry.Get(debate.AgentA.Provider)
+	if err != nil {
+		return "", err
+	}
+
+	consensusStatus := "No consensus was reached."
+	if conclusion.Agreed {
+		consensusStatus = "Both agents agreed on a consensus."
+	}
+
+	summaryPrompt := fmt.Sprintf(`Summarize this debate on: "%s"
+
+Debate history:
+%s
+
+Voting results: %s
+
+Provide a brief, objective summary (2-3 sentences) of the key points discussed and the outcome.`, debate.Topic, history, consensusStatus)
+
+	var response string
+	if debate.AgentA.Model != "" {
+		response, err = prov.GenerateWithModel(ctx, summaryPrompt, debate.AgentA.Model)
+	} else {
+		response, err = prov.Generate(ctx, summaryPrompt)
+	}
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(response), nil
 }
 
 // ExecuteNextTurn executes just the next turn (for step-by-step execution).

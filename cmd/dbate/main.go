@@ -13,8 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/alienxp03/dbate/internal/config"
 	"github.com/alienxp03/dbate/internal/core"
 	"github.com/alienxp03/dbate/internal/engine"
+	"github.com/alienxp03/dbate/internal/export"
 	"github.com/alienxp03/dbate/internal/persona"
 	"github.com/alienxp03/dbate/internal/provider"
 	"github.com/alienxp03/dbate/internal/storage"
@@ -23,7 +25,9 @@ import (
 )
 
 var (
-	dbPath string
+	dbPath    string
+	cfgPath   string
+	appConfig *config.Config
 )
 
 func main() {
@@ -40,18 +44,35 @@ var rootCmd = &cobra.Command{
 
 Create debates on any topic and watch AI agents with different personas
 argue, collaborate, or analyze from multiple perspectives.`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Load config
+		var err error
+		if cfgPath != "" {
+			appConfig, err = config.LoadFrom(cfgPath)
+		} else {
+			appConfig, err = config.Load()
+		}
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+		return nil
+	},
 }
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.dbate/dbate.db)")
+	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.dbate/config.yaml)")
 
 	rootCmd.AddCommand(newCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(showCmd)
 	rootCmd.AddCommand(deleteCmd)
+	rootCmd.AddCommand(exportCmd)
+	rootCmd.AddCommand(lockCmd)
 	rootCmd.AddCommand(providersCmd)
 	rootCmd.AddCommand(personasCmd)
 	rootCmd.AddCommand(stylesCmd)
+	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(serveCmd)
 }
 
@@ -73,7 +94,17 @@ func getStorage() (storage.Storage, error) {
 	return store, nil
 }
 
-// new command - create and run a debate
+func getRegistry() *provider.Registry {
+	if appConfig != nil {
+		return provider.RegistryFromConfig(appConfig)
+	}
+	return provider.DefaultRegistry()
+}
+
+// ============================================================================
+// NEW COMMAND
+// ============================================================================
+
 var newCmd = &cobra.Command{
 	Use:   "new [topic]",
 	Short: "Start a new debate",
@@ -81,32 +112,49 @@ var newCmd = &cobra.Command{
 
 Examples:
   dbate new "Is AI beneficial for humanity?"
-  dbate new "Best programming language for web development" --style adversarial
-  dbate new "Climate change solutions" -a claude:optimist -b gemini:skeptic`,
+  dbate new "Best programming language" --style adversarial
+  dbate new "Climate change" -a claude:optimist -b gemini:skeptic
+  dbate new "Tech trends" -a claude/sonnet:analyst -b qwen:visionary --step`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runNewDebate,
 }
 
 var (
-	agentAFlag string
-	agentBFlag string
-	styleFlag  string
-	turnsFlag  int
+	agentAFlag   string
+	agentBFlag   string
+	styleFlag    string
+	turnsFlag    int
+	stepModeFlag bool
 )
 
 func init() {
-	newCmd.Flags().StringVarP(&agentAFlag, "agent-a", "a", "claude:pragmatist", "Agent A config (provider:persona)")
-	newCmd.Flags().StringVarP(&agentBFlag, "agent-b", "b", "claude:skeptic", "Agent B config (provider:persona)")
-	newCmd.Flags().StringVarP(&styleFlag, "style", "s", "collaborative", "Debate style (adversarial, collaborative, analytical, socratic)")
-	newCmd.Flags().IntVarP(&turnsFlag, "turns", "t", 5, "Number of turns per agent")
+	newCmd.Flags().StringVarP(&agentAFlag, "agent-a", "a", "claude:pragmatist", "Agent A (provider[/model]:persona)")
+	newCmd.Flags().StringVarP(&agentBFlag, "agent-b", "b", "claude:skeptic", "Agent B (provider[/model]:persona)")
+	newCmd.Flags().StringVarP(&styleFlag, "style", "s", "collaborative", "Debate style")
+	newCmd.Flags().IntVarP(&turnsFlag, "turns", "t", 5, "Turns per agent")
+	newCmd.Flags().BoolVar(&stepModeFlag, "step", false, "Step-by-step mode (execute one turn at a time)")
 }
 
-func parseAgentConfig(config string) (provider, persona string, err error) {
-	parts := strings.SplitN(config, ":", 2)
+// parseAgentConfig parses "provider[/model]:persona" format
+func parseAgentConfig(cfg string) (prov, model, pers string, err error) {
+	parts := strings.SplitN(cfg, ":", 2)
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid agent config: %s (expected provider:persona)", config)
+		return "", "", "", fmt.Errorf("invalid agent config: %s (expected provider[/model]:persona)", cfg)
 	}
-	return parts[0], parts[1], nil
+
+	providerPart := parts[0]
+	pers = parts[1]
+
+	// Check for model
+	if strings.Contains(providerPart, "/") {
+		provParts := strings.SplitN(providerPart, "/", 2)
+		prov = provParts[0]
+		model = provParts[1]
+	} else {
+		prov = providerPart
+	}
+
+	return prov, model, pers, nil
 }
 
 func runNewDebate(cmd *cobra.Command, args []string) error {
@@ -118,44 +166,70 @@ func runNewDebate(cmd *cobra.Command, args []string) error {
 	}
 	defer store.Close()
 
-	registry := provider.DefaultRegistry()
+	registry := getRegistry()
 	eng := engine.New(store, registry)
 
 	// Parse agent configs
-	providerA, personaA, err := parseAgentConfig(agentAFlag)
+	providerA, modelA, personaA, err := parseAgentConfig(agentAFlag)
 	if err != nil {
 		return err
 	}
-	providerB, personaB, err := parseAgentConfig(agentBFlag)
+	providerB, modelB, personaB, err := parseAgentConfig(agentBFlag)
 	if err != nil {
 		return err
+	}
+
+	// Set mode
+	mode := core.ModeAutomatic
+	if stepModeFlag {
+		mode = core.ModeTurnByTurn
 	}
 
 	// Create debate
-	config := core.NewDebateConfig{
+	debateConfig := core.NewDebateConfig{
 		Topic:          topic,
 		AgentAProvider: providerA,
+		AgentAModel:    modelA,
 		AgentAPersona:  personaA,
 		AgentBProvider: providerB,
+		AgentBModel:    modelB,
 		AgentBPersona:  personaB,
 		Style:          styleFlag,
+		Mode:           mode,
 		MaxTurns:       turnsFlag,
 	}
 
-	debate, err := eng.CreateDebate(cmd.Context(), config)
+	debate, err := eng.CreateDebate(cmd.Context(), debateConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create debate: %w", err)
 	}
 
-	fmt.Printf("\n🎭 Starting Debate: %s\n", debate.Topic)
-	fmt.Printf("   Style: %s | Turns: %d per agent\n", debate.Style, debate.MaxTurns)
-	fmt.Printf("   Agent A: %s (%s)\n", debate.AgentA.Name, debate.AgentA.Provider)
-	fmt.Printf("   Agent B: %s (%s)\n", debate.AgentB.Name, debate.AgentB.Provider)
+	fmt.Printf("\n🎭 Debate: %s\n", debate.Topic)
+	fmt.Printf("   Style: %s | Turns: %d per agent | Mode: %s\n", debate.Style, debate.MaxTurns, debate.Mode)
+	fmt.Printf("   Agent A: %s (%s", debate.AgentA.Name, debate.AgentA.Provider)
+	if debate.AgentA.Model != "" {
+		fmt.Printf("/%s", debate.AgentA.Model)
+	}
+	fmt.Println(")")
+	fmt.Printf("   Agent B: %s (%s", debate.AgentB.Name, debate.AgentB.Provider)
+	if debate.AgentB.Model != "" {
+		fmt.Printf("/%s", debate.AgentB.Model)
+	}
+	fmt.Println(")")
 	fmt.Printf("   ID: %s\n\n", debate.ID)
 	fmt.Println(strings.Repeat("─", 60))
 
-	// Setup signal handling
-	ctx, cancel := context.WithCancel(cmd.Context())
+	// Step mode - let user control
+	if stepModeFlag {
+		return runStepMode(cmd.Context(), eng, debate)
+	}
+
+	// Auto mode - run full debate
+	return runAutoMode(cmd.Context(), eng, debate)
+}
+
+func runAutoMode(ctx context.Context, eng *engine.Engine, debate *core.Debate) error {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
@@ -166,15 +240,8 @@ func runNewDebate(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	// Run debate with callback for live output
-	err = eng.RunDebate(ctx, debate.ID, func(turn *core.Turn, d *core.Debate) {
-		var agentName string
-		if turn.AgentID == d.AgentA.ID {
-			agentName = d.AgentA.Name
-		} else {
-			agentName = d.AgentB.Name
-		}
-
+	err := eng.RunDebate(ctx, debate.ID, func(turn *core.Turn, d *core.Debate) {
+		agentName := getAgentName(d, turn.AgentID)
 		fmt.Printf("\n📢 Turn %d - %s\n", turn.Number, agentName)
 		fmt.Println(strings.Repeat("─", 40))
 		fmt.Println(turn.Content)
@@ -183,40 +250,114 @@ func runNewDebate(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		if ctx.Err() != nil {
-			fmt.Println("\nDebate paused. Use 'dbate show <id>' to view progress.")
+			fmt.Println("\nDebate paused. Resume with: dbate show " + debate.ID[:8])
 			return nil
 		}
 		return fmt.Errorf("debate failed: %w", err)
 	}
 
-	// Show conclusion
-	debate, _ = eng.GetDebate(debate.ID)
+	return showConclusion(eng, debate.ID)
+}
+
+func runStepMode(ctx context.Context, eng *engine.Engine, debate *core.Debate) error {
+	fmt.Println("\n📋 Step-by-step mode. Commands:")
+	fmt.Println("   [Enter] - Execute next turn")
+	fmt.Println("   [q]     - Quit and save")
+	fmt.Println()
+
+	totalTurns := debate.MaxTurns * 2
+	currentTurn := 0
+
+	for currentTurn < totalTurns {
+		fmt.Printf("Turn %d/%d - Press Enter to continue (q to quit): ", currentTurn+1, totalTurns)
+
+		var input string
+		fmt.Scanln(&input)
+
+		if strings.ToLower(strings.TrimSpace(input)) == "q" {
+			fmt.Println("\nDebate paused. Resume with: dbate show " + debate.ID[:8])
+			return nil
+		}
+
+		turn, err := eng.ExecuteNextTurn(ctx, debate.ID)
+		if err != nil {
+			return fmt.Errorf("failed to execute turn: %w", err)
+		}
+
+		debate, _, _ = eng.GetDebateWithTurns(debate.ID)
+		agentName := getAgentName(debate, turn.AgentID)
+
+		fmt.Printf("\n📢 Turn %d - %s\n", turn.Number, agentName)
+		fmt.Println(strings.Repeat("─", 40))
+		fmt.Println(turn.Content)
+		fmt.Println()
+
+		currentTurn++
+	}
+
+	return showConclusion(eng, debate.ID)
+}
+
+func showConclusion(eng *engine.Engine, debateID string) error {
+	debate, _ := eng.GetDebate(debateID)
+	if debate == nil || debate.Conclusion == nil {
+		return nil
+	}
+
 	fmt.Println(strings.Repeat("═", 60))
 	fmt.Println("🏁 CONCLUSION")
 	fmt.Println(strings.Repeat("═", 60))
 
-	if debate.Conclusion != nil {
-		if debate.Conclusion.Agreed {
-			fmt.Println("✅ Consensus Reached!")
-		} else {
-			fmt.Println("❌ No Consensus")
+	// Show votes
+	if debate.Conclusion.AgentAVote != nil {
+		voteIcon := "❌"
+		if debate.Conclusion.AgentAVote.Agrees {
+			voteIcon = "✅"
 		}
-		fmt.Printf("\n%s\n", debate.Conclusion.Summary)
+		fmt.Printf("\n%s %s votes: %s\n", voteIcon, debate.AgentA.Name,
+			map[bool]string{true: "AGREE", false: "DISAGREE"}[debate.Conclusion.AgentAVote.Agrees])
+	}
+	if debate.Conclusion.AgentBVote != nil {
+		voteIcon := "❌"
+		if debate.Conclusion.AgentBVote.Agrees {
+			voteIcon = "✅"
+		}
+		fmt.Printf("%s %s votes: %s\n", voteIcon, debate.AgentB.Name,
+			map[bool]string{true: "AGREE", false: "DISAGREE"}[debate.Conclusion.AgentBVote.Agrees])
+	}
 
-		if !debate.Conclusion.Agreed {
-			if debate.Conclusion.AgentASummary != "" {
-				fmt.Printf("\n📌 %s's Position:\n%s\n", debate.AgentA.Name, debate.Conclusion.AgentASummary)
-			}
-			if debate.Conclusion.AgentBSummary != "" {
-				fmt.Printf("\n📌 %s's Position:\n%s\n", debate.AgentB.Name, debate.Conclusion.AgentBSummary)
-			}
+	fmt.Println()
+	if debate.Conclusion.Agreed {
+		fmt.Println("🤝 Consensus Reached!")
+	} else {
+		fmt.Println("⚔️  No Consensus")
+	}
+
+	fmt.Printf("\n%s\n", debate.Conclusion.Summary)
+
+	if !debate.Conclusion.Agreed {
+		if debate.Conclusion.AgentASummary != "" {
+			fmt.Printf("\n📌 %s:\n%s\n", debate.AgentA.Name, debate.Conclusion.AgentASummary)
+		}
+		if debate.Conclusion.AgentBSummary != "" {
+			fmt.Printf("\n📌 %s:\n%s\n", debate.AgentB.Name, debate.Conclusion.AgentBSummary)
 		}
 	}
 
 	return nil
 }
 
-// list command - list all debates
+func getAgentName(debate *core.Debate, agentID string) string {
+	if agentID == debate.AgentA.ID {
+		return debate.AgentA.Name
+	}
+	return debate.AgentB.Name
+}
+
+// ============================================================================
+// LIST COMMAND
+// ============================================================================
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List all debates",
@@ -227,7 +368,7 @@ var listCmd = &cobra.Command{
 		}
 		defer store.Close()
 
-		eng := engine.New(store, provider.DefaultRegistry())
+		eng := engine.New(store, getRegistry())
 		debates, err := eng.ListDebates(50, 0)
 		if err != nil {
 			return err
@@ -239,21 +380,26 @@ var listCmd = &cobra.Command{
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tTOPIC\tSTATUS\tSTYLE\tTURNS\tCREATED")
-		fmt.Fprintln(w, "──\t─────\t──────\t─────\t─────\t───────")
+		fmt.Fprintln(w, "ID\tTOPIC\tSTATUS\tMODE\tTURNS\tLOCK\tCREATED")
+		fmt.Fprintln(w, "──\t─────\t──────\t────\t─────\t────\t───────")
 
 		for _, d := range debates {
 			shortID := d.ID[:8]
 			shortTopic := d.Topic
-			if len(shortTopic) > 40 {
-				shortTopic = shortTopic[:37] + "..."
+			if len(shortTopic) > 35 {
+				shortTopic = shortTopic[:32] + "..."
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n",
+			lock := ""
+			if d.ReadOnly {
+				lock = "🔒"
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
 				shortID,
 				shortTopic,
 				d.Status,
-				d.Style,
+				d.Mode,
 				d.TurnCount,
+				lock,
 				d.CreatedAt.Format("2006-01-02 15:04"),
 			)
 		}
@@ -263,7 +409,10 @@ var listCmd = &cobra.Command{
 	},
 }
 
-// show command - show a debate
+// ============================================================================
+// SHOW COMMAND
+// ============================================================================
+
 var showCmd = &cobra.Command{
 	Use:   "show [id]",
 	Short: "Show debate details",
@@ -275,24 +424,10 @@ var showCmd = &cobra.Command{
 		}
 		defer store.Close()
 
-		eng := engine.New(store, provider.DefaultRegistry())
-
-		// Find debate by ID prefix
-		debates, err := eng.ListDebates(100, 0)
+		eng := engine.New(store, getRegistry())
+		debateID, err := findDebateByPrefix(eng, args[0])
 		if err != nil {
 			return err
-		}
-
-		var debateID string
-		for _, d := range debates {
-			if strings.HasPrefix(d.ID, args[0]) {
-				debateID = d.ID
-				break
-			}
-		}
-
-		if debateID == "" {
-			return fmt.Errorf("debate not found: %s", args[0])
 		}
 
 		debate, turns, err := eng.GetDebateWithTurns(debateID)
@@ -303,7 +438,10 @@ var showCmd = &cobra.Command{
 		fmt.Printf("\n🎭 Debate: %s\n", debate.Topic)
 		fmt.Printf("   ID: %s\n", debate.ID)
 		fmt.Printf("   Status: %s\n", debate.Status)
-		fmt.Printf("   Style: %s\n", debate.Style)
+		fmt.Printf("   Style: %s | Mode: %s\n", debate.Style, debate.Mode)
+		if debate.ReadOnly {
+			fmt.Println("   🔒 Read-only")
+		}
 		fmt.Printf("   Agent A: %s (%s)\n", debate.AgentA.Name, debate.AgentA.Provider)
 		fmt.Printf("   Agent B: %s (%s)\n", debate.AgentB.Name, debate.AgentB.Provider)
 		fmt.Printf("   Created: %s\n", debate.CreatedAt.Format(time.RFC3339))
@@ -312,12 +450,7 @@ var showCmd = &cobra.Command{
 		if len(turns) > 0 {
 			fmt.Println(strings.Repeat("─", 60))
 			for _, turn := range turns {
-				var agentName string
-				if turn.AgentID == debate.AgentA.ID {
-					agentName = debate.AgentA.Name
-				} else {
-					agentName = debate.AgentB.Name
-				}
+				agentName := getAgentName(debate, turn.AgentID)
 				fmt.Printf("\n📢 Turn %d - %s\n", turn.Number, agentName)
 				fmt.Println(strings.Repeat("─", 40))
 				fmt.Println(turn.Content)
@@ -325,23 +458,17 @@ var showCmd = &cobra.Command{
 		}
 
 		if debate.Conclusion != nil {
-			fmt.Println()
-			fmt.Println(strings.Repeat("═", 60))
-			fmt.Println("🏁 CONCLUSION")
-			fmt.Println(strings.Repeat("═", 60))
-			if debate.Conclusion.Agreed {
-				fmt.Println("✅ Consensus Reached!")
-			} else {
-				fmt.Println("❌ No Consensus")
-			}
-			fmt.Printf("\n%s\n", debate.Conclusion.Summary)
+			showConclusion(eng, debate.ID)
 		}
 
 		return nil
 	},
 }
 
-// delete command
+// ============================================================================
+// DELETE COMMAND
+// ============================================================================
+
 var deleteCmd = &cobra.Command{
 	Use:   "delete [id]",
 	Short: "Delete a debate",
@@ -353,20 +480,10 @@ var deleteCmd = &cobra.Command{
 		}
 		defer store.Close()
 
-		eng := engine.New(store, provider.DefaultRegistry())
-
-		// Find by prefix
-		debates, _ := eng.ListDebates(100, 0)
-		var debateID string
-		for _, d := range debates {
-			if strings.HasPrefix(d.ID, args[0]) {
-				debateID = d.ID
-				break
-			}
-		}
-
-		if debateID == "" {
-			return fmt.Errorf("debate not found: %s", args[0])
+		eng := engine.New(store, getRegistry())
+		debateID, err := findDebateByPrefix(eng, args[0])
+		if err != nil {
+			return err
 		}
 
 		if err := eng.DeleteDebate(debateID); err != nil {
@@ -378,31 +495,148 @@ var deleteCmd = &cobra.Command{
 	},
 }
 
-// providers command
+// ============================================================================
+// EXPORT COMMAND
+// ============================================================================
+
+var exportCmd = &cobra.Command{
+	Use:   "export [id] [format]",
+	Short: "Export debate to file",
+	Long: `Export a debate to markdown, PDF, or JSON.
+
+Examples:
+  dbate export abc123 markdown
+  dbate export abc123 pdf
+  dbate export abc123 json -o debate.json`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		eng := engine.New(store, getRegistry())
+		debateID, err := findDebateByPrefix(eng, args[0])
+		if err != nil {
+			return err
+		}
+
+		debate, turns, err := eng.GetDebateWithTurns(debateID)
+		if err != nil {
+			return err
+		}
+
+		format := export.Format(strings.ToLower(args[1]))
+		exporter, err := export.GetExporter(format)
+		if err != nil {
+			return err
+		}
+
+		outputPath, _ := cmd.Flags().GetString("output")
+		if outputPath == "" {
+			outputPath = export.GenerateFilename(debate, exporter.FileExtension())
+		}
+
+		file, err := os.Create(outputPath)
+		if err != nil {
+			return fmt.Errorf("failed to create file: %w", err)
+		}
+		defer file.Close()
+
+		if err := exporter.Export(debate, turns, file); err != nil {
+			return fmt.Errorf("failed to export: %w", err)
+		}
+
+		fmt.Printf("Exported to: %s\n", outputPath)
+		return nil
+	},
+}
+
+func init() {
+	exportCmd.Flags().StringP("output", "o", "", "Output file path")
+}
+
+// ============================================================================
+// LOCK COMMAND
+// ============================================================================
+
+var lockCmd = &cobra.Command{
+	Use:   "lock [id]",
+	Short: "Toggle read-only lock on a debate",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore, ok := store.(*storage.SQLiteStorage)
+		if !ok {
+			return fmt.Errorf("lock not supported for this storage type")
+		}
+
+		eng := engine.New(store, getRegistry())
+		debateID, err := findDebateByPrefix(eng, args[0])
+		if err != nil {
+			return err
+		}
+
+		debate, err := eng.GetDebate(debateID)
+		if err != nil {
+			return err
+		}
+
+		newState := !debate.ReadOnly
+		if err := sqlStore.SetReadOnly(debateID, newState); err != nil {
+			return err
+		}
+
+		if newState {
+			fmt.Printf("🔒 Locked debate: %s\n", debateID[:8])
+		} else {
+			fmt.Printf("🔓 Unlocked debate: %s\n", debateID[:8])
+		}
+		return nil
+	},
+}
+
+// ============================================================================
+// PROVIDERS COMMAND
+// ============================================================================
+
 var providersCmd = &cobra.Command{
 	Use:   "providers",
 	Short: "List available AI providers",
 	Run: func(cmd *cobra.Command, args []string) {
-		registry := provider.DefaultRegistry()
+		registry := getRegistry()
 
 		fmt.Println("\nAvailable Providers:")
-		fmt.Println(strings.Repeat("─", 40))
+		fmt.Println(strings.Repeat("─", 50))
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tDISPLAY\tSTATUS")
+		fmt.Fprintln(w, "NAME\tDISPLAY\tMODELS\tSTATUS")
 
 		for _, p := range registry.List() {
 			status := "❌ Not installed"
 			if p.Available() {
 				status = "✅ Available"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\n", p.Name(), p.DisplayName(), status)
+			models := strings.Join(p.Models(), ", ")
+			if len(models) > 30 {
+				models = models[:27] + "..."
+			}
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", p.Name(), p.DisplayName(), models, status)
 		}
 		w.Flush()
 	},
 }
 
-// personas command
+// ============================================================================
+// PERSONAS COMMAND
+// ============================================================================
+
 var personasCmd = &cobra.Command{
 	Use:   "personas",
 	Short: "List available agent personas",
@@ -417,7 +651,10 @@ var personasCmd = &cobra.Command{
 	},
 }
 
-// styles command
+// ============================================================================
+// STYLES COMMAND
+// ============================================================================
+
 var stylesCmd = &cobra.Command{
 	Use:   "styles",
 	Short: "List available debate styles",
@@ -432,7 +669,70 @@ var stylesCmd = &cobra.Command{
 	},
 }
 
-// serve command - start web server
+// ============================================================================
+// CONFIG COMMAND
+// ============================================================================
+
+var configCmd = &cobra.Command{
+	Use:   "config",
+	Short: "Manage configuration",
+}
+
+var configShowCmd = &cobra.Command{
+	Use:   "show",
+	Short: "Show current configuration",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Printf("Config file: %s\n\n", config.DefaultConfigPath())
+
+		if appConfig != nil {
+			fmt.Println("Current settings:")
+			fmt.Printf("  Default style: %s\n", appConfig.Defaults.Style)
+			fmt.Printf("  Default turns: %d\n", appConfig.Defaults.MaxTurns)
+			fmt.Printf("  Default provider: %s\n", appConfig.Defaults.Provider)
+			fmt.Println("\nProviders:")
+			for name, p := range appConfig.Providers {
+				status := "disabled"
+				if p.Enabled {
+					status = "enabled"
+				}
+				fmt.Printf("  %s: %s (timeout: %s)\n", name, status, p.Timeout)
+			}
+		}
+		return nil
+	},
+}
+
+var configInitCmd = &cobra.Command{
+	Use:   "init",
+	Short: "Create example config file",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		path := config.DefaultConfigPath()
+		if _, err := os.Stat(path); err == nil {
+			return fmt.Errorf("config already exists at %s", path)
+		}
+
+		example := config.GenerateExample()
+		if err := os.MkdirAll(strings.TrimSuffix(path, "/config.yaml"), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, []byte(example), 0644); err != nil {
+			return err
+		}
+
+		fmt.Printf("Created config at: %s\n", path)
+		return nil
+	},
+}
+
+func init() {
+	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configInitCmd)
+}
+
+// ============================================================================
+// SERVE COMMAND
+// ============================================================================
+
 var (
 	servePort int
 )
@@ -447,9 +747,8 @@ var serveCmd = &cobra.Command{
 		}
 		defer store.Close()
 
-		registry := provider.DefaultRegistry()
+		registry := getRegistry()
 
-		// Import the handlers package
 		fmt.Printf("\n🌐 Starting dbate web server on http://localhost:%d\n\n", servePort)
 		fmt.Println("Available endpoints:")
 		fmt.Printf("  GET  http://localhost:%d/debates     - List all debates\n", servePort)
@@ -457,7 +756,6 @@ var serveCmd = &cobra.Command{
 		fmt.Printf("  GET  http://localhost:%d/debates/:id - View debate\n", servePort)
 		fmt.Println("\nPress Ctrl+C to stop the server")
 
-		// Start server using the web handlers
 		return startWebServer(store, registry, servePort)
 	},
 }
@@ -478,7 +776,6 @@ func startWebServer(store storage.Storage, registry *provider.Registry, port int
 		Handler: mux,
 	}
 
-	// Handle shutdown
 	go func() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -491,4 +788,18 @@ func startWebServer(store storage.Storage, registry *provider.Registry, port int
 		return fmt.Errorf("server error: %w", err)
 	}
 	return nil
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+func findDebateByPrefix(eng *engine.Engine, prefix string) (string, error) {
+	debates, _ := eng.ListDebates(100, 0)
+	for _, d := range debates {
+		if strings.HasPrefix(d.ID, prefix) {
+			return d.ID, nil
+		}
+	}
+	return "", fmt.Errorf("debate not found: %s", prefix)
 }

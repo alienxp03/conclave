@@ -1,63 +1,49 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"os/exec"
-	"strings"
+
+	"github.com/alienxp03/dbate/internal/config"
 )
 
 // GeminiProvider implements the Provider interface for Gemini CLI.
 type GeminiProvider struct {
-	command string
+	BaseProvider
 }
 
-// NewGeminiProvider creates a new Gemini provider.
+// NewGeminiProvider creates a new Gemini provider with defaults.
 func NewGeminiProvider() *GeminiProvider {
+	return NewGeminiProviderWithConfig(config.ProviderConfig{
+		Command:      "gemini",
+		Args:         []string{},
+		DefaultModel: "",
+		Models:       []string{"pro", "flash", "ultra"},
+		Timeout:      0,
+		Enabled:      true,
+	})
+}
+
+// NewGeminiProviderWithConfig creates a Gemini provider from config.
+func NewGeminiProviderWithConfig(cfg config.ProviderConfig) *GeminiProvider {
 	return &GeminiProvider{
-		command: "gemini",
+		BaseProvider: NewBaseProvider("gemini", "Google Gemini", cfg),
 	}
-}
-
-// Name returns the provider identifier.
-func (p *GeminiProvider) Name() string {
-	return "gemini"
-}
-
-// DisplayName returns a human-friendly name.
-func (p *GeminiProvider) DisplayName() string {
-	return "Google Gemini"
 }
 
 // Generate sends a prompt to Gemini CLI and returns the response.
 func (p *GeminiProvider) Generate(ctx context.Context, prompt string) (string, error) {
-	// Use gemini CLI - adjust flags as needed based on actual CLI interface
-	cmd := exec.CommandContext(ctx, p.command, prompt)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			return "", &CLIError{
-				Provider: p.Name(),
-				Message:  stderr.String(),
-				Err:      err,
-			}
-		}
-		return "", &CLIError{
-			Provider: p.Name(),
-			Message:  "failed to execute gemini command",
-			Err:      err,
-		}
-	}
-
-	return strings.TrimSpace(stdout.String()), nil
+	return p.GenerateWithModel(ctx, prompt, p.defaultModel)
 }
 
-// Available checks if the Gemini CLI is installed.
-func (p *GeminiProvider) Available() bool {
-	_, err := exec.LookPath(p.command)
-	return err == nil
+// GenerateWithModel sends a prompt with a specific model.
+func (p *GeminiProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+	args := []string{}
+
+	// Add model flag if specified
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+
+	args = append(args, prompt)
+	return p.Execute(ctx, args...)
 }

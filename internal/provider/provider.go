@@ -5,6 +5,9 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
+
+	"github.com/alienxp03/dbate/internal/config"
 )
 
 // Provider defines the interface for AI providers.
@@ -18,8 +21,20 @@ type Provider interface {
 	// Generate sends a prompt and returns the response.
 	Generate(ctx context.Context, prompt string) (string, error)
 
+	// GenerateWithModel sends a prompt with a specific model.
+	GenerateWithModel(ctx context.Context, prompt, model string) (string, error)
+
 	// Available checks if the provider's CLI is installed and accessible.
 	Available() bool
+
+	// Models returns available models for this provider.
+	Models() []string
+
+	// DefaultModel returns the default model.
+	DefaultModel() string
+
+	// Timeout returns the configured timeout.
+	Timeout() time.Duration
 }
 
 // Registry manages available AI providers.
@@ -80,11 +95,38 @@ func (r *Registry) Available() []Provider {
 	return available
 }
 
-// DefaultRegistry creates a registry with all default providers.
+// DefaultRegistry creates a registry with default provider configurations.
 func DefaultRegistry() *Registry {
+	cfg := config.Default()
+	return RegistryFromConfig(cfg)
+}
+
+// RegistryFromConfig creates a registry from configuration.
+func RegistryFromConfig(cfg *config.Config) *Registry {
 	r := NewRegistry()
-	r.Register(NewClaudeProvider())
-	r.Register(NewCodexProvider())
-	r.Register(NewGeminiProvider())
+
+	for name, provCfg := range cfg.Providers {
+		if !provCfg.Enabled {
+			continue
+		}
+
+		var p Provider
+		switch name {
+		case "claude":
+			p = NewClaudeProviderWithConfig(provCfg)
+		case "codex":
+			p = NewCodexProviderWithConfig(provCfg)
+		case "gemini":
+			p = NewGeminiProviderWithConfig(provCfg)
+		case "qwen":
+			p = NewQwenProviderWithConfig(provCfg)
+		default:
+			// Generic CLI provider for custom providers
+			p = NewGenericProvider(name, provCfg)
+		}
+
+		r.Register(p)
+	}
+
 	return r
 }

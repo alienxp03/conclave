@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/alienxp03/dbate/internal/core"
 	"github.com/alienxp03/dbate/internal/provider"
@@ -27,6 +28,12 @@ func (m *MockProvider) Generate(ctx context.Context, prompt string) (string, err
 	m.callCount++
 	return m.responses[idx], nil
 }
+func (m *MockProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+	return m.Generate(ctx, prompt)
+}
+func (m *MockProvider) Models() []string       { return []string{"test-model"} }
+func (m *MockProvider) DefaultModel() string   { return "test-model" }
+func (m *MockProvider) Timeout() time.Duration { return 2 * time.Minute }
 
 func setupTestEngine(t *testing.T) (*Engine, func()) {
 	tmpDir, err := os.MkdirTemp("", "dbate-engine-test-*")

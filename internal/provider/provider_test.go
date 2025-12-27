@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 // MockProvider is a test provider
@@ -23,6 +24,12 @@ func (m *MockProvider) Generate(ctx context.Context, prompt string) (string, err
 	}
 	return m.response, nil
 }
+func (m *MockProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+	return m.Generate(ctx, prompt)
+}
+func (m *MockProvider) Models() []string       { return []string{"test-model"} }
+func (m *MockProvider) DefaultModel() string   { return "test-model" }
+func (m *MockProvider) Timeout() time.Duration { return 2 * time.Minute }
 
 func TestRegistry(t *testing.T) {
 	t.Run("RegisterAndGet", func(t *testing.T) {
@@ -82,14 +89,14 @@ func TestRegistry(t *testing.T) {
 func TestDefaultRegistry(t *testing.T) {
 	r := DefaultRegistry()
 
-	// Should have all 3 providers registered
+	// Should have all 4 providers registered
 	providers := r.List()
-	if len(providers) != 3 {
-		t.Errorf("wrong count: got %d, want 3", len(providers))
+	if len(providers) != 4 {
+		t.Errorf("wrong count: got %d, want 4", len(providers))
 	}
 
 	// Check each provider exists
-	for _, name := range []string{"claude", "codex", "gemini"} {
+	for _, name := range []string{"claude", "codex", "gemini", "qwen"} {
 		_, err := r.Get(name)
 		if err != nil {
 			t.Errorf("provider %s not found", name)

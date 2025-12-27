@@ -1,63 +1,49 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"os/exec"
-	"strings"
+
+	"github.com/alienxp03/dbate/internal/config"
 )
 
 // CodexProvider implements the Provider interface for OpenAI Codex CLI.
 type CodexProvider struct {
-	command string
+	BaseProvider
 }
 
-// NewCodexProvider creates a new Codex provider.
+// NewCodexProvider creates a new Codex provider with defaults.
 func NewCodexProvider() *CodexProvider {
+	return NewCodexProviderWithConfig(config.ProviderConfig{
+		Command:      "codex",
+		Args:         []string{},
+		DefaultModel: "",
+		Models:       []string{"gpt-4", "gpt-4o", "gpt-3.5-turbo"},
+		Timeout:      0,
+		Enabled:      true,
+	})
+}
+
+// NewCodexProviderWithConfig creates a Codex provider from config.
+func NewCodexProviderWithConfig(cfg config.ProviderConfig) *CodexProvider {
 	return &CodexProvider{
-		command: "codex",
+		BaseProvider: NewBaseProvider("codex", "OpenAI Codex", cfg),
 	}
-}
-
-// Name returns the provider identifier.
-func (p *CodexProvider) Name() string {
-	return "codex"
-}
-
-// DisplayName returns a human-friendly name.
-func (p *CodexProvider) DisplayName() string {
-	return "OpenAI Codex"
 }
 
 // Generate sends a prompt to Codex CLI and returns the response.
 func (p *CodexProvider) Generate(ctx context.Context, prompt string) (string, error) {
-	// Use codex CLI - adjust flags as needed based on actual CLI interface
-	cmd := exec.CommandContext(ctx, p.command, prompt)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		if stderr.Len() > 0 {
-			return "", &CLIError{
-				Provider: p.Name(),
-				Message:  stderr.String(),
-				Err:      err,
-			}
-		}
-		return "", &CLIError{
-			Provider: p.Name(),
-			Message:  "failed to execute codex command",
-			Err:      err,
-		}
-	}
-
-	return strings.TrimSpace(stdout.String()), nil
+	return p.GenerateWithModel(ctx, prompt, p.defaultModel)
 }
 
-// Available checks if the Codex CLI is installed.
-func (p *CodexProvider) Available() bool {
-	_, err := exec.LookPath(p.command)
-	return err == nil
+// GenerateWithModel sends a prompt with a specific model.
+func (p *CodexProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+	args := []string{}
+
+	// Add model flag if specified
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+
+	args = append(args, prompt)
+	return p.Execute(ctx, args...)
 }

@@ -1,64 +1,49 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"os/exec"
-	"strings"
+
+	"github.com/alienxp03/dbate/internal/config"
 )
 
 // ClaudeProvider implements the Provider interface for Claude CLI.
 type ClaudeProvider struct {
-	command string
+	BaseProvider
 }
 
-// NewClaudeProvider creates a new Claude provider.
+// NewClaudeProvider creates a new Claude provider with defaults.
 func NewClaudeProvider() *ClaudeProvider {
+	return NewClaudeProviderWithConfig(config.ProviderConfig{
+		Command:      "claude",
+		Args:         []string{"--print"},
+		DefaultModel: "",
+		Models:       []string{"opus", "sonnet", "haiku"},
+		Timeout:      0, // Uses default
+		Enabled:      true,
+	})
+}
+
+// NewClaudeProviderWithConfig creates a Claude provider from config.
+func NewClaudeProviderWithConfig(cfg config.ProviderConfig) *ClaudeProvider {
 	return &ClaudeProvider{
-		command: "claude",
+		BaseProvider: NewBaseProvider("claude", "Claude", cfg),
 	}
-}
-
-// Name returns the provider identifier.
-func (p *ClaudeProvider) Name() string {
-	return "claude"
-}
-
-// DisplayName returns a human-friendly name.
-func (p *ClaudeProvider) DisplayName() string {
-	return "Claude"
 }
 
 // Generate sends a prompt to Claude CLI and returns the response.
 func (p *ClaudeProvider) Generate(ctx context.Context, prompt string) (string, error) {
-	// Use claude CLI with --print flag for non-interactive mode
-	cmd := exec.CommandContext(ctx, p.command, "--print", prompt)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		// Check if stderr has useful error info
-		if stderr.Len() > 0 {
-			return "", &CLIError{
-				Provider: p.Name(),
-				Message:  stderr.String(),
-				Err:      err,
-			}
-		}
-		return "", &CLIError{
-			Provider: p.Name(),
-			Message:  "failed to execute claude command",
-			Err:      err,
-		}
-	}
-
-	return strings.TrimSpace(stdout.String()), nil
+	return p.GenerateWithModel(ctx, prompt, p.defaultModel)
 }
 
-// Available checks if the Claude CLI is installed.
-func (p *ClaudeProvider) Available() bool {
-	_, err := exec.LookPath(p.command)
-	return err == nil
+// GenerateWithModel sends a prompt with a specific model.
+func (p *ClaudeProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+	args := []string{}
+
+	// Add model flag if specified
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+
+	args = append(args, prompt)
+	return p.Execute(ctx, args...)
 }

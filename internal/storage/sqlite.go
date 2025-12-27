@@ -54,8 +54,10 @@ func (s *SQLiteStorage) Initialize() error {
 		agent_a_json TEXT NOT NULL,
 		agent_b_json TEXT NOT NULL,
 		style TEXT NOT NULL,
+		mode TEXT NOT NULL DEFAULT 'automatic',
 		max_turns INTEGER NOT NULL,
 		status TEXT NOT NULL DEFAULT 'pending',
+		read_only INTEGER NOT NULL DEFAULT 0,
 		conclusion_json TEXT,
 		created_at DATETIME NOT NULL,
 		updated_at DATETIME NOT NULL,
@@ -82,7 +84,18 @@ func (s *SQLiteStorage) Initialize() error {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
+	// Run migrations for existing databases
+	s.migrate()
+
 	return nil
+}
+
+// migrate handles schema migrations for existing databases.
+func (s *SQLiteStorage) migrate() {
+	// Add mode column if not exists
+	s.db.Exec("ALTER TABLE debates ADD COLUMN mode TEXT NOT NULL DEFAULT 'automatic'")
+	// Add read_only column if not exists
+	s.db.Exec("ALTER TABLE debates ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0")
 }
 
 // Close closes the database connection.
@@ -112,10 +125,20 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 		conclusionJSON = &str
 	}
 
+	mode := debate.Mode
+	if mode == "" {
+		mode = core.ModeAutomatic
+	}
+
 	query := `
-	INSERT INTO debates (id, topic, agent_a_json, agent_b_json, style, max_turns, status, conclusion_json, created_at, updated_at, completed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO debates (id, topic, agent_a_json, agent_b_json, style, mode, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
+
+	readOnly := 0
+	if debate.ReadOnly {
+		readOnly = 1
+	}
 
 	_, err = s.db.Exec(query,
 		debate.ID,
@@ -123,8 +146,10 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 		string(agentAJSON),
 		string(agentBJSON),
 		debate.Style,
+		mode,
 		debate.MaxTurns,
 		debate.Status,
+		readOnly,
 		conclusionJSON,
 		debate.CreatedAt,
 		debate.UpdatedAt,
@@ -141,7 +166,7 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 // GetDebate retrieves a debate by ID.
 func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 	query := `
-	SELECT id, topic, agent_a_json, agent_b_json, style, max_turns, status, conclusion_json, created_at, updated_at, completed_at
+	SELECT id, topic, agent_a_json, agent_b_json, style, mode, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at
 	FROM debates
 	WHERE id = ?
 	`
@@ -150,6 +175,8 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 	var agentAJSON, agentBJSON string
 	var conclusionJSON sql.NullString
 	var completedAt sql.NullTime
+	var mode sql.NullString
+	var readOnly int
 
 	err := s.db.QueryRow(query, id).Scan(
 		&debate.ID,
@@ -157,8 +184,10 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 		&agentAJSON,
 		&agentBJSON,
 		&debate.Style,
+		&mode,
 		&debate.MaxTurns,
 		&debate.Status,
+		&readOnly,
 		&conclusionJSON,
 		&debate.CreatedAt,
 		&debate.UpdatedAt,
@@ -192,6 +221,14 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 		debate.CompletedAt = &completedAt.Time
 	}
 
+	if mode.Valid {
+		debate.Mode = core.DebateMode(mode.String)
+	} else {
+		debate.Mode = core.ModeAutomatic
+	}
+
+	debate.ReadOnly = readOnly == 1
+
 	return &debate, nil
 }
 
@@ -219,9 +256,14 @@ func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
 
 	debate.UpdatedAt = time.Now()
 
+	readOnly := 0
+	if debate.ReadOnly {
+		readOnly = 1
+	}
+
 	query := `
 	UPDATE debates
-	SET topic = ?, agent_a_json = ?, agent_b_json = ?, style = ?, max_turns = ?, status = ?, conclusion_json = ?, updated_at = ?, completed_at = ?
+	SET topic = ?, agent_a_json = ?, agent_b_json = ?, style = ?, mode = ?, max_turns = ?, status = ?, read_only = ?, conclusion_json = ?, updated_at = ?, completed_at = ?
 	WHERE id = ?
 	`
 
@@ -230,8 +272,10 @@ func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
 		string(agentAJSON),
 		string(agentBJSON),
 		debate.Style,
+		debate.Mode,
 		debate.MaxTurns,
 		debate.Status,
+		readOnly,
 		conclusionJSON,
 		debate.UpdatedAt,
 		debate.CompletedAt,
@@ -247,7 +291,16 @@ func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
 
 // DeleteDebate deletes a debate and its turns.
 func (s *SQLiteStorage) DeleteDebate(id string) error {
-	_, err := s.db.Exec("DELETE FROM debates WHERE id = ?", id)
+	// Check if debate is read-only
+	debate, err := s.GetDebate(id)
+	if err != nil {
+		return err
+	}
+	if debate != nil && debate.ReadOnly {
+		return fmt.Errorf("cannot delete read-only debate")
+	}
+
+	_, err = s.db.Exec("DELETE FROM debates WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete debate: %w", err)
 	}
@@ -257,7 +310,7 @@ func (s *SQLiteStorage) DeleteDebate(id string) error {
 // ListDebates returns a list of debate summaries.
 func (s *SQLiteStorage) ListDebates(limit, offset int) ([]*core.DebateSummary, error) {
 	query := `
-	SELECT d.id, d.topic, d.status, d.style, d.agent_a_json, d.agent_b_json, d.created_at,
+	SELECT d.id, d.topic, d.status, d.style, d.mode, d.read_only, d.agent_a_json, d.agent_b_json, d.created_at,
 		   (SELECT COUNT(*) FROM turns WHERE debate_id = d.id) as turn_count
 	FROM debates d
 	ORDER BY d.created_at DESC
@@ -274,12 +327,16 @@ func (s *SQLiteStorage) ListDebates(limit, offset int) ([]*core.DebateSummary, e
 	for rows.Next() {
 		var summary core.DebateSummary
 		var agentAJSON, agentBJSON string
+		var mode sql.NullString
+		var readOnly int
 
 		err := rows.Scan(
 			&summary.ID,
 			&summary.Topic,
 			&summary.Status,
 			&summary.Style,
+			&mode,
+			&readOnly,
 			&agentAJSON,
 			&agentBJSON,
 			&summary.CreatedAt,
@@ -296,10 +353,32 @@ func (s *SQLiteStorage) ListDebates(limit, offset int) ([]*core.DebateSummary, e
 		summary.AgentA = fmt.Sprintf("%s:%s", agentA.Provider, agentA.Persona)
 		summary.AgentB = fmt.Sprintf("%s:%s", agentB.Provider, agentB.Persona)
 
+		if mode.Valid {
+			summary.Mode = core.DebateMode(mode.String)
+		} else {
+			summary.Mode = core.ModeAutomatic
+		}
+
+		summary.ReadOnly = readOnly == 1
+
 		summaries = append(summaries, &summary)
 	}
 
 	return summaries, nil
+}
+
+// SetReadOnly sets the read-only flag for a debate.
+func (s *SQLiteStorage) SetReadOnly(id string, readOnly bool) error {
+	val := 0
+	if readOnly {
+		val = 1
+	}
+
+	_, err := s.db.Exec("UPDATE debates SET read_only = ?, updated_at = ? WHERE id = ?", val, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("failed to set read-only: %w", err)
+	}
+	return nil
 }
 
 // AddTurn adds a turn to a debate.

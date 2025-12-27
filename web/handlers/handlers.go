@@ -5,6 +5,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/alienxp03/dbate/internal/core"
 	"github.com/alienxp03/dbate/internal/engine"
+	"github.com/alienxp03/dbate/internal/export"
 	"github.com/alienxp03/dbate/internal/persona"
 	"github.com/alienxp03/dbate/internal/provider"
 	"github.com/alienxp03/dbate/internal/storage"
@@ -27,6 +29,7 @@ var templateFS embed.FS
 type Handler struct {
 	engine    *engine.Engine
 	registry  *provider.Registry
+	storage   storage.Storage
 	templates *template.Template
 }
 
@@ -74,6 +77,7 @@ func New(store storage.Storage, registry *provider.Registry) *Handler {
 	return &Handler{
 		engine:    engine.New(store, registry),
 		registry:  registry,
+		storage:   store,
 		templates: tmpl,
 	}
 }
@@ -95,7 +99,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /debates", h.handleCreateDebate)
 	mux.HandleFunc("POST /debates/{id}/run", h.handleRunDebate)
 	mux.HandleFunc("POST /debates/{id}/next", h.handleNextTurn)
+	mux.HandleFunc("POST /debates/{id}/lock", h.handleLockDebate)
+	mux.HandleFunc("POST /debates/{id}/unlock", h.handleUnlockDebate)
 	mux.HandleFunc("DELETE /debates/{id}", h.handleDeleteDebate)
+
+	// Export
+	mux.HandleFunc("GET /debates/{id}/export/{format}", h.handleExportDebate)
 
 	// API
 	mux.HandleFunc("GET /api/providers", h.handleAPIProviders)
@@ -222,13 +231,22 @@ func (h *Handler) handleCreateDebate(w http.ResponseWriter, r *http.Request) {
 		maxTurns = 5
 	}
 
+	// Parse mode
+	mode := core.ModeAutomatic
+	if r.FormValue("mode") == "turn_by_turn" {
+		mode = core.ModeTurnByTurn
+	}
+
 	config := core.NewDebateConfig{
 		Topic:          r.FormValue("topic"),
 		AgentAProvider: r.FormValue("agent_a_provider"),
+		AgentAModel:    r.FormValue("agent_a_model"),
 		AgentAPersona:  r.FormValue("agent_a_persona"),
 		AgentBProvider: r.FormValue("agent_b_provider"),
+		AgentBModel:    r.FormValue("agent_b_model"),
 		AgentBPersona:  r.FormValue("agent_b_persona"),
 		Style:          r.FormValue("style"),
+		Mode:           mode,
 		MaxTurns:       maxTurns,
 	}
 
@@ -241,7 +259,7 @@ func (h *Handler) handleCreateDebate(w http.ResponseWriter, r *http.Request) {
 	// Check if auto-run is requested
 	autoRun := r.FormValue("auto_run") == "on"
 
-	if autoRun {
+	if autoRun && mode == core.ModeAutomatic {
 		// Run debate in background
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -292,12 +310,99 @@ func (h *Handler) handleNextTurn(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleDeleteDebate(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
+	// Check if debate is read-only
+	debate, err := h.engine.GetDebate(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if debate != nil && debate.ReadOnly {
+		h.htmxError(w, "Cannot delete a read-only debate")
+		return
+	}
+
 	if err := h.engine.DeleteDebate(id); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("HX-Redirect", "/debates")
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) handleExportDebate(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	format := r.PathValue("format")
+
+	debate, turns, err := h.engine.GetDebateWithTurns(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if debate == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	exporter, err := export.GetExporter(export.Format(format))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	filename := export.GenerateFilename(debate, exporter.FileExtension())
+
+	// Set appropriate content type
+	switch format {
+	case "pdf":
+		w.Header().Set("Content-Type", "application/pdf")
+	case "json":
+		w.Header().Set("Content-Type", "application/json")
+	default:
+		w.Header().Set("Content-Type", "text/markdown")
+	}
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+
+	if err := exporter.Export(debate, turns, w); err != nil {
+		log.Printf("Export error: %v", err)
+		http.Error(w, "Export failed", http.StatusInternalServerError)
+	}
+}
+
+func (h *Handler) handleLockDebate(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	sqlStore, ok := h.storage.(*storage.SQLiteStorage)
+	if !ok {
+		h.htmxError(w, "Lock not supported for this storage type")
+		return
+	}
+
+	if err := sqlStore.SetReadOnly(id, true); err != nil {
+		h.htmxError(w, err.Error())
+		return
+	}
+
+	w.Header().Set("HX-Redirect", "/debates/"+id)
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) handleUnlockDebate(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	sqlStore, ok := h.storage.(*storage.SQLiteStorage)
+	if !ok {
+		h.htmxError(w, "Lock not supported for this storage type")
+		return
+	}
+
+	if err := sqlStore.SetReadOnly(id, false); err != nil {
+		h.htmxError(w, err.Error())
+		return
+	}
+
+	w.Header().Set("HX-Redirect", "/debates/"+id)
 	w.WriteHeader(http.StatusOK)
 }
 
