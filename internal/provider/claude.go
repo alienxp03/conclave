@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"time"
 
 	"github.com/alienxp03/dbate/internal/config"
 )
@@ -9,6 +10,7 @@ import (
 // ClaudeProvider implements the Provider interface for Claude CLI.
 type ClaudeProvider struct {
 	BaseProvider
+	useJSON bool
 }
 
 // NewClaudeProvider creates a new Claude provider with defaults.
@@ -27,6 +29,7 @@ func NewClaudeProvider() *ClaudeProvider {
 func NewClaudeProviderWithConfig(cfg config.ProviderConfig) *ClaudeProvider {
 	return &ClaudeProvider{
 		BaseProvider: NewBaseProvider("claude", "Claude", cfg),
+		useJSON:      true, // Enable JSON output by default
 	}
 }
 
@@ -39,11 +42,68 @@ func (p *ClaudeProvider) Generate(ctx context.Context, prompt string) (string, e
 func (p *ClaudeProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
 	args := []string{}
 
+	// Use JSON output format for structured responses
+	if p.useJSON {
+		args = append(args, "--output-format", "json")
+	}
+
 	// Add model flag if specified
 	if model != "" {
 		args = append(args, "--model", model)
 	}
 
 	args = append(args, prompt)
-	return p.Execute(ctx, args...)
+
+	start := time.Now()
+	rawOutput, err := p.Execute(ctx, args...)
+	if err != nil {
+		return "", err
+	}
+
+	// Parse JSON response if using JSON mode
+	if p.useJSON {
+		resp, parseErr := ParseClaudeJSON(rawOutput)
+		if parseErr != nil {
+			// Fall back to raw output if parsing fails
+			return rawOutput, nil
+		}
+		resp.Duration = time.Since(start)
+		resp.Provider = p.name
+		return resp.Content, nil
+	}
+
+	return rawOutput, nil
+}
+
+// GenerateWithResponse sends a prompt and returns a structured response with metadata.
+func (p *ClaudeProvider) GenerateWithResponse(ctx context.Context, prompt, model string) (*Response, error) {
+	args := []string{}
+
+	// Always use JSON output for structured responses
+	args = append(args, "--output-format", "json")
+
+	if model != "" {
+		args = append(args, "--model", model)
+	}
+
+	args = append(args, prompt)
+
+	start := time.Now()
+	rawOutput, err := p.Execute(ctx, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, parseErr := ParseClaudeJSON(rawOutput)
+	if parseErr != nil {
+		return &Response{
+			Content:  rawOutput,
+			Provider: p.name,
+			Duration: time.Since(start),
+		}, nil
+	}
+
+	resp.Duration = time.Since(start)
+	resp.Provider = p.name
+	return resp, nil
 }

@@ -3,11 +3,18 @@ package provider
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/alienxp03/dbate/internal/config"
+)
+
+const (
+	// MaxOutputSize is the maximum size of CLI output (10MB).
+	MaxOutputSize = 10 * 1024 * 1024
 )
 
 // BaseProvider provides common functionality for CLI-based providers.
@@ -60,8 +67,63 @@ func (p *BaseProvider) Available() bool {
 	return err == nil
 }
 
+// ValidateExecutable checks if the CLI is available before execution.
+// Returns an error if the executable is not found.
+func (p *BaseProvider) ValidateExecutable() error {
+	path, err := exec.LookPath(p.command)
+	if err != nil {
+		return &CLIError{
+			Provider: p.name,
+			Message:  fmt.Sprintf("executable '%s' not found in PATH", p.command),
+			Err:      err,
+		}
+	}
+	// Verify it's actually executable
+	if path == "" {
+		return &CLIError{
+			Provider: p.name,
+			Message:  fmt.Sprintf("executable '%s' found but path is empty", p.command),
+		}
+	}
+	return nil
+}
+
+// limitedWriter wraps an io.Writer and limits total bytes written.
+type limitedWriter struct {
+	w       io.Writer
+	n       int64
+	limit   int64
+	limited bool
+}
+
+func newLimitedWriter(w io.Writer, limit int64) *limitedWriter {
+	return &limitedWriter{w: w, limit: limit}
+}
+
+func (l *limitedWriter) Write(p []byte) (n int, err error) {
+	if l.n >= l.limit {
+		l.limited = true
+		return len(p), nil // Discard, but don't error
+	}
+
+	remaining := l.limit - l.n
+	if int64(len(p)) > remaining {
+		p = p[:remaining]
+		l.limited = true
+	}
+
+	n, err = l.w.Write(p)
+	l.n += int64(n)
+	return n, err
+}
+
 // Execute runs the CLI command with the given arguments.
 func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string, error) {
+	// Validate executable before running
+	if err := p.ValidateExecutable(); err != nil {
+		return "", err
+	}
+
 	// Apply timeout
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
@@ -69,9 +131,13 @@ func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string
 	allArgs := append(p.args, extraArgs...)
 	cmd := exec.CommandContext(ctx, p.command, allArgs...)
 
+	// Use size-limited writers to prevent memory issues
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	stdoutLimited := newLimitedWriter(&stdout, MaxOutputSize)
+	stderrLimited := newLimitedWriter(&stderr, MaxOutputSize)
+
+	cmd.Stdout = stdoutLimited
+	cmd.Stderr = stderrLimited
 
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
@@ -82,9 +148,13 @@ func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string
 			}
 		}
 		if stderr.Len() > 0 {
+			errMsg := stderr.String()
+			if stderrLimited.limited {
+				errMsg = errMsg + "\n... (output truncated)"
+			}
 			return "", &CLIError{
 				Provider: p.name,
-				Message:  stderr.String(),
+				Message:  errMsg,
 				Err:      err,
 			}
 		}
@@ -95,5 +165,10 @@ func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string
 		}
 	}
 
-	return strings.TrimSpace(stdout.String()), nil
+	result := strings.TrimSpace(stdout.String())
+	if stdoutLimited.limited {
+		result = result + "\n... (output truncated at 10MB)"
+	}
+
+	return result, nil
 }
