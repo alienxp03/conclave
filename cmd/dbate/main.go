@@ -642,17 +642,171 @@ var providersCmd = &cobra.Command{
 // ============================================================================
 
 var personasCmd = &cobra.Command{
-	Use:   "personas",
-	Short: "List available agent personas",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("\nAvailable Personas:")
-		fmt.Println(strings.Repeat("─", 60))
+	Use:   "persona",
+	Short: "Manage agent personas",
+	Aliases: []string{"personas"},
+}
 
+var personaListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all personas",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+
+		fmt.Println("\nBuilt-in Personas:")
+		fmt.Println(strings.Repeat("─", 60))
 		for _, p := range persona.DefaultPersonas() {
-			fmt.Printf("\n%s (%s)\n", p.Name, p.ID)
+			fmt.Printf("\n%s (%s) [builtin]\n", p.Name, p.ID)
 			fmt.Printf("  %s\n", p.Description)
 		}
+
+		customs, err := sqlStore.ListPersonas(false)
+		if err != nil {
+			return err
+		}
+
+		if len(customs) > 0 {
+			fmt.Println("\nCustom Personas:")
+			fmt.Println(strings.Repeat("─", 60))
+			for _, p := range customs {
+				fmt.Printf("\n%s (%s)\n", p.Name, p.ID)
+				fmt.Printf("  %s\n", p.Description)
+			}
+		}
+
+		return nil
 	},
+}
+
+var personaShowCmd = &cobra.Command{
+	Use:   "show [id]",
+	Short: "Show persona details",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id := args[0]
+
+		// Check builtin first
+		if p := persona.Get(id); p != nil {
+			fmt.Printf("\nPersona: %s (%s) [builtin]\n", p.Name, p.ID)
+			fmt.Printf("Description: %s\n", p.Description)
+			fmt.Println("\nSystem Prompt:")
+			fmt.Println(strings.Repeat("─", 40))
+			fmt.Println(p.SystemPrompt)
+			return nil
+		}
+
+		// Check custom
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+		p, err := sqlStore.GetPersona(id)
+		if err != nil {
+			return err
+		}
+		if p == nil {
+			return fmt.Errorf("persona not found: %s", id)
+		}
+
+		fmt.Printf("\nPersona: %s (%s)\n", p.Name, p.ID)
+		fmt.Printf("Description: %s\n", p.Description)
+		fmt.Printf("Created: %s\n", p.CreatedAt.Format("2006-01-02 15:04"))
+		fmt.Println("\nSystem Prompt:")
+		fmt.Println(strings.Repeat("─", 40))
+		fmt.Println(p.SystemPrompt)
+		return nil
+	},
+}
+
+var personaCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new persona",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, _ := cmd.Flags().GetString("id")
+		name, _ := cmd.Flags().GetString("name")
+		desc, _ := cmd.Flags().GetString("description")
+		prompt, _ := cmd.Flags().GetString("prompt")
+
+		if id == "" || name == "" || prompt == "" {
+			return fmt.Errorf("--id, --name, and --prompt are required")
+		}
+
+		// Check for conflict with builtin
+		if persona.Get(id) != nil {
+			return fmt.Errorf("cannot use ID '%s': conflicts with builtin persona", id)
+		}
+
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+
+		p := &storage.Persona{
+			ID:           id,
+			Name:         name,
+			Description:  desc,
+			SystemPrompt: prompt,
+		}
+
+		if err := sqlStore.CreatePersona(p); err != nil {
+			return err
+		}
+
+		fmt.Printf("Created persona: %s (%s)\n", name, id)
+		return nil
+	},
+}
+
+var personaDeleteCmd = &cobra.Command{
+	Use:   "delete [id]",
+	Short: "Delete a custom persona",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id := args[0]
+
+		// Prevent deletion of builtins
+		if persona.Get(id) != nil {
+			return fmt.Errorf("cannot delete builtin persona: %s", id)
+		}
+
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+		if err := sqlStore.DeletePersona(id); err != nil {
+			return err
+		}
+
+		fmt.Printf("Deleted persona: %s\n", id)
+		return nil
+	},
+}
+
+func init() {
+	personaCreateCmd.Flags().String("id", "", "Persona ID (required)")
+	personaCreateCmd.Flags().String("name", "", "Persona name (required)")
+	personaCreateCmd.Flags().String("description", "", "Persona description")
+	personaCreateCmd.Flags().String("prompt", "", "System prompt (required)")
+
+	personasCmd.AddCommand(personaListCmd)
+	personasCmd.AddCommand(personaShowCmd)
+	personasCmd.AddCommand(personaCreateCmd)
+	personasCmd.AddCommand(personaDeleteCmd)
 }
 
 // ============================================================================
@@ -660,17 +814,192 @@ var personasCmd = &cobra.Command{
 // ============================================================================
 
 var stylesCmd = &cobra.Command{
-	Use:   "styles",
-	Short: "List available debate styles",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("\nAvailable Debate Styles:")
-		fmt.Println(strings.Repeat("─", 60))
+	Use:   "style",
+	Short: "Manage debate styles",
+	Aliases: []string{"styles"},
+}
 
+var styleListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all styles",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+
+		fmt.Println("\nBuilt-in Styles:")
+		fmt.Println(strings.Repeat("─", 60))
 		for _, s := range style.DefaultStyles() {
-			fmt.Printf("\n%s (%s)\n", s.Name, s.ID)
+			fmt.Printf("\n%s (%s) [builtin]\n", s.Name, s.ID)
 			fmt.Printf("  %s\n", s.Description)
 		}
+
+		customs, err := sqlStore.ListStyles(false)
+		if err != nil {
+			return err
+		}
+
+		if len(customs) > 0 {
+			fmt.Println("\nCustom Styles:")
+			fmt.Println(strings.Repeat("─", 60))
+			for _, s := range customs {
+				fmt.Printf("\n%s (%s)\n", s.Name, s.ID)
+				fmt.Printf("  %s\n", s.Description)
+			}
+		}
+
+		return nil
 	},
+}
+
+var styleShowCmd = &cobra.Command{
+	Use:   "show [id]",
+	Short: "Show style details",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id := args[0]
+
+		// Check builtin first
+		if s := style.Get(id); s != nil {
+			fmt.Printf("\nStyle: %s (%s) [builtin]\n", s.Name, s.ID)
+			fmt.Printf("Description: %s\n", s.Description)
+			fmt.Println("\nOpening Prompt:")
+			fmt.Println(strings.Repeat("─", 40))
+			fmt.Println(s.OpeningPrompt)
+			fmt.Println("\nResponse Prompt:")
+			fmt.Println(strings.Repeat("─", 40))
+			fmt.Println(s.ResponsePrompt)
+			fmt.Println("\nConclusion Prompt:")
+			fmt.Println(strings.Repeat("─", 40))
+			fmt.Println(s.ConclusionPrompt)
+			return nil
+		}
+
+		// Check custom
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+		s, err := sqlStore.GetStyle(id)
+		if err != nil {
+			return err
+		}
+		if s == nil {
+			return fmt.Errorf("style not found: %s", id)
+		}
+
+		fmt.Printf("\nStyle: %s (%s)\n", s.Name, s.ID)
+		fmt.Printf("Description: %s\n", s.Description)
+		fmt.Printf("Created: %s\n", s.CreatedAt.Format("2006-01-02 15:04"))
+		fmt.Println("\nOpening Prompt:")
+		fmt.Println(strings.Repeat("─", 40))
+		fmt.Println(s.OpeningPrompt)
+		fmt.Println("\nResponse Prompt:")
+		fmt.Println(strings.Repeat("─", 40))
+		fmt.Println(s.ResponsePrompt)
+		fmt.Println("\nConclusion Prompt:")
+		fmt.Println(strings.Repeat("─", 40))
+		fmt.Println(s.ConclusionPrompt)
+		return nil
+	},
+}
+
+var styleCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new style",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id, _ := cmd.Flags().GetString("id")
+		name, _ := cmd.Flags().GetString("name")
+		desc, _ := cmd.Flags().GetString("description")
+		opening, _ := cmd.Flags().GetString("opening")
+		response, _ := cmd.Flags().GetString("response")
+		conclusion, _ := cmd.Flags().GetString("conclusion")
+
+		if id == "" || name == "" {
+			return fmt.Errorf("--id and --name are required")
+		}
+		if opening == "" || response == "" || conclusion == "" {
+			return fmt.Errorf("--opening, --response, and --conclusion prompts are required")
+		}
+
+		// Check for conflict with builtin
+		if style.Get(id) != nil {
+			return fmt.Errorf("cannot use ID '%s': conflicts with builtin style", id)
+		}
+
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+
+		s := &storage.Style{
+			ID:               id,
+			Name:             name,
+			Description:      desc,
+			OpeningPrompt:    opening,
+			ResponsePrompt:   response,
+			ConclusionPrompt: conclusion,
+		}
+
+		if err := sqlStore.CreateStyle(s); err != nil {
+			return err
+		}
+
+		fmt.Printf("Created style: %s (%s)\n", name, id)
+		return nil
+	},
+}
+
+var styleDeleteCmd = &cobra.Command{
+	Use:   "delete [id]",
+	Short: "Delete a custom style",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id := args[0]
+
+		// Prevent deletion of builtins
+		if style.Get(id) != nil {
+			return fmt.Errorf("cannot delete builtin style: %s", id)
+		}
+
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+		if err := sqlStore.DeleteStyle(id); err != nil {
+			return err
+		}
+
+		fmt.Printf("Deleted style: %s\n", id)
+		return nil
+	},
+}
+
+func init() {
+	styleCreateCmd.Flags().String("id", "", "Style ID (required)")
+	styleCreateCmd.Flags().String("name", "", "Style name (required)")
+	styleCreateCmd.Flags().String("description", "", "Style description")
+	styleCreateCmd.Flags().String("opening", "", "Opening prompt template (required)")
+	styleCreateCmd.Flags().String("response", "", "Response prompt template (required)")
+	styleCreateCmd.Flags().String("conclusion", "", "Conclusion prompt template (required)")
+
+	stylesCmd.AddCommand(styleListCmd)
+	stylesCmd.AddCommand(styleShowCmd)
+	stylesCmd.AddCommand(styleCreateCmd)
+	stylesCmd.AddCommand(styleDeleteCmd)
 }
 
 // ============================================================================

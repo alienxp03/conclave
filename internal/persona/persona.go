@@ -87,7 +87,7 @@ func DefaultPersonas() []Persona {
 	}
 }
 
-// Get returns a persona by ID.
+// Get returns a persona by ID (builtins only).
 func Get(id string) *Persona {
 	for _, p := range DefaultPersonas() {
 		if p.ID == id {
@@ -97,7 +97,7 @@ func Get(id string) *Persona {
 	return nil
 }
 
-// List returns all available persona IDs.
+// List returns all available persona IDs (builtins only).
 func List() []string {
 	personas := DefaultPersonas()
 	ids := make([]string, len(personas))
@@ -107,7 +107,50 @@ func List() []string {
 	return ids
 }
 
-// Valid checks if a persona ID is valid.
+// Valid checks if a persona ID is valid (builtins only).
+// For custom personas, use ValidWithStore.
 func Valid(id string) bool {
 	return Get(id) != nil
+}
+
+// StoredPersona represents a persona from storage.
+type StoredPersona struct {
+	ID           string
+	Name         string
+	Description  string
+	SystemPrompt string
+	IsBuiltin    bool
+}
+
+// PersonaStore interface for custom persona storage.
+type PersonaStore interface {
+	GetPersona(id string) (*StoredPersona, error)
+}
+
+// GetWithStore returns a persona by ID, checking storage for custom personas.
+func GetWithStore(id string, store PersonaStore) *Persona {
+	// Check builtin first
+	if p := Get(id); p != nil {
+		return p
+	}
+
+	// Check storage for custom personas
+	if store != nil {
+		stored, err := store.GetPersona(id)
+		if err == nil && stored != nil {
+			return &Persona{
+				ID:           stored.ID,
+				Name:         stored.Name,
+				Description:  stored.Description,
+				SystemPrompt: stored.SystemPrompt,
+			}
+		}
+	}
+
+	return nil
+}
+
+// ValidWithStore checks if a persona ID is valid, including custom personas.
+func ValidWithStore(id string, store PersonaStore) bool {
+	return GetWithStore(id, store) != nil
 }

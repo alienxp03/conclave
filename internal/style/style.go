@@ -166,7 +166,7 @@ Your reflection:`,
 	}
 }
 
-// Get returns a style by ID.
+// Get returns a style by ID (builtins only).
 func Get(id string) *Style {
 	for _, s := range DefaultStyles() {
 		if s.ID == id {
@@ -176,7 +176,7 @@ func Get(id string) *Style {
 	return nil
 }
 
-// List returns all available style IDs.
+// List returns all available style IDs (builtins only).
 func List() []string {
 	styles := DefaultStyles()
 	ids := make([]string, len(styles))
@@ -186,7 +186,8 @@ func List() []string {
 	return ids
 }
 
-// Valid checks if a style ID is valid.
+// Valid checks if a style ID is valid (builtins only).
+// For custom styles, use ValidWithStore.
 func Valid(id string) bool {
 	return Get(id) != nil
 }
@@ -194,4 +195,50 @@ func Valid(id string) bool {
 // Default returns the default debate style.
 func Default() *Style {
 	return Get("collaborative")
+}
+
+// StoredStyle represents a style from storage.
+type StoredStyle struct {
+	ID               string
+	Name             string
+	Description      string
+	OpeningPrompt    string
+	ResponsePrompt   string
+	ConclusionPrompt string
+	IsBuiltin        bool
+}
+
+// StyleStore interface for custom style storage.
+type StyleStore interface {
+	GetStyle(id string) (*StoredStyle, error)
+}
+
+// GetWithStore returns a style by ID, checking storage for custom styles.
+func GetWithStore(id string, store StyleStore) *Style {
+	// Check builtin first
+	if s := Get(id); s != nil {
+		return s
+	}
+
+	// Check storage for custom styles
+	if store != nil {
+		stored, err := store.GetStyle(id)
+		if err == nil && stored != nil {
+			return &Style{
+				ID:               stored.ID,
+				Name:             stored.Name,
+				Description:      stored.Description,
+				OpeningPrompt:    stored.OpeningPrompt,
+				ResponsePrompt:   stored.ResponsePrompt,
+				ConclusionPrompt: stored.ConclusionPrompt,
+			}
+		}
+	}
+
+	return nil
+}
+
+// ValidWithStore checks if a style ID is valid, including custom styles.
+func ValidWithStore(id string, store StyleStore) bool {
+	return GetWithStore(id, store) != nil
 }

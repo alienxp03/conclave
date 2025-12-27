@@ -74,9 +74,33 @@ func (s *SQLiteStorage) Initialize() error {
 		FOREIGN KEY (debate_id) REFERENCES debates(id) ON DELETE CASCADE
 	);
 
+	CREATE TABLE IF NOT EXISTS personas (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL,
+		system_prompt TEXT NOT NULL,
+		is_builtin INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
+	);
+
+	CREATE TABLE IF NOT EXISTS styles (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL,
+		opening_prompt TEXT NOT NULL,
+		response_prompt TEXT NOT NULL,
+		conclusion_prompt TEXT NOT NULL,
+		is_builtin INTEGER NOT NULL DEFAULT 0,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_turns_debate_id ON turns(debate_id);
 	CREATE INDEX IF NOT EXISTS idx_debates_status ON debates(status);
 	CREATE INDEX IF NOT EXISTS idx_debates_created_at ON debates(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_personas_is_builtin ON personas(is_builtin);
+	CREATE INDEX IF NOT EXISTS idx_styles_is_builtin ON styles(is_builtin);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -476,4 +500,274 @@ func DefaultDBPath() string {
 		return "dbate.db"
 	}
 	return filepath.Join(home, ".dbate", "dbate.db")
+}
+
+// Persona represents a stored persona.
+type Persona struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	SystemPrompt string    `json:"system_prompt"`
+	IsBuiltin    bool      `json:"is_builtin"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+// Style represents a stored debate style.
+type Style struct {
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	Description      string    `json:"description"`
+	OpeningPrompt    string    `json:"opening_prompt"`
+	ResponsePrompt   string    `json:"response_prompt"`
+	ConclusionPrompt string    `json:"conclusion_prompt"`
+	IsBuiltin        bool      `json:"is_builtin"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
+}
+
+// CreatePersona creates a new persona.
+func (s *SQLiteStorage) CreatePersona(p *Persona) error {
+	now := time.Now()
+	p.CreatedAt = now
+	p.UpdatedAt = now
+
+	query := `
+	INSERT INTO personas (id, name, description, system_prompt, is_builtin, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+
+	isBuiltin := 0
+	if p.IsBuiltin {
+		isBuiltin = 1
+	}
+
+	_, err := s.db.Exec(query, p.ID, p.Name, p.Description, p.SystemPrompt, isBuiltin, p.CreatedAt, p.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to create persona: %w", err)
+	}
+	return nil
+}
+
+// GetPersona retrieves a persona by ID.
+func (s *SQLiteStorage) GetPersona(id string) (*Persona, error) {
+	query := `
+	SELECT id, name, description, system_prompt, is_builtin, created_at, updated_at
+	FROM personas
+	WHERE id = ?
+	`
+
+	var p Persona
+	var isBuiltin int
+	err := s.db.QueryRow(query, id).Scan(
+		&p.ID, &p.Name, &p.Description, &p.SystemPrompt, &isBuiltin, &p.CreatedAt, &p.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get persona: %w", err)
+	}
+
+	p.IsBuiltin = isBuiltin == 1
+	return &p, nil
+}
+
+// UpdatePersona updates an existing persona.
+func (s *SQLiteStorage) UpdatePersona(p *Persona) error {
+	// Don't allow updating builtin personas
+	existing, err := s.GetPersona(p.ID)
+	if err != nil {
+		return err
+	}
+	if existing != nil && existing.IsBuiltin {
+		return fmt.Errorf("cannot update builtin persona")
+	}
+
+	p.UpdatedAt = time.Now()
+
+	query := `
+	UPDATE personas
+	SET name = ?, description = ?, system_prompt = ?, updated_at = ?
+	WHERE id = ? AND is_builtin = 0
+	`
+
+	_, err = s.db.Exec(query, p.Name, p.Description, p.SystemPrompt, p.UpdatedAt, p.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update persona: %w", err)
+	}
+	return nil
+}
+
+// DeletePersona deletes a persona.
+func (s *SQLiteStorage) DeletePersona(id string) error {
+	// Don't allow deleting builtin personas
+	existing, err := s.GetPersona(id)
+	if err != nil {
+		return err
+	}
+	if existing != nil && existing.IsBuiltin {
+		return fmt.Errorf("cannot delete builtin persona")
+	}
+
+	_, err = s.db.Exec("DELETE FROM personas WHERE id = ? AND is_builtin = 0", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete persona: %w", err)
+	}
+	return nil
+}
+
+// ListPersonas returns all personas.
+func (s *SQLiteStorage) ListPersonas(includeBuiltin bool) ([]*Persona, error) {
+	query := `
+	SELECT id, name, description, system_prompt, is_builtin, created_at, updated_at
+	FROM personas
+	`
+	if !includeBuiltin {
+		query += " WHERE is_builtin = 0"
+	}
+	query += " ORDER BY is_builtin DESC, name ASC"
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list personas: %w", err)
+	}
+	defer rows.Close()
+
+	var personas []*Persona
+	for rows.Next() {
+		var p Persona
+		var isBuiltin int
+		err := rows.Scan(&p.ID, &p.Name, &p.Description, &p.SystemPrompt, &isBuiltin, &p.CreatedAt, &p.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan persona: %w", err)
+		}
+		p.IsBuiltin = isBuiltin == 1
+		personas = append(personas, &p)
+	}
+
+	return personas, nil
+}
+
+// CreateStyle creates a new style.
+func (s *SQLiteStorage) CreateStyle(st *Style) error {
+	now := time.Now()
+	st.CreatedAt = now
+	st.UpdatedAt = now
+
+	query := `
+	INSERT INTO styles (id, name, description, opening_prompt, response_prompt, conclusion_prompt, is_builtin, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	isBuiltin := 0
+	if st.IsBuiltin {
+		isBuiltin = 1
+	}
+
+	_, err := s.db.Exec(query, st.ID, st.Name, st.Description, st.OpeningPrompt, st.ResponsePrompt, st.ConclusionPrompt, isBuiltin, st.CreatedAt, st.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to create style: %w", err)
+	}
+	return nil
+}
+
+// GetStyle retrieves a style by ID.
+func (s *SQLiteStorage) GetStyle(id string) (*Style, error) {
+	query := `
+	SELECT id, name, description, opening_prompt, response_prompt, conclusion_prompt, is_builtin, created_at, updated_at
+	FROM styles
+	WHERE id = ?
+	`
+
+	var st Style
+	var isBuiltin int
+	err := s.db.QueryRow(query, id).Scan(
+		&st.ID, &st.Name, &st.Description, &st.OpeningPrompt, &st.ResponsePrompt, &st.ConclusionPrompt, &isBuiltin, &st.CreatedAt, &st.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get style: %w", err)
+	}
+
+	st.IsBuiltin = isBuiltin == 1
+	return &st, nil
+}
+
+// UpdateStyle updates an existing style.
+func (s *SQLiteStorage) UpdateStyle(st *Style) error {
+	existing, err := s.GetStyle(st.ID)
+	if err != nil {
+		return err
+	}
+	if existing != nil && existing.IsBuiltin {
+		return fmt.Errorf("cannot update builtin style")
+	}
+
+	st.UpdatedAt = time.Now()
+
+	query := `
+	UPDATE styles
+	SET name = ?, description = ?, opening_prompt = ?, response_prompt = ?, conclusion_prompt = ?, updated_at = ?
+	WHERE id = ? AND is_builtin = 0
+	`
+
+	_, err = s.db.Exec(query, st.Name, st.Description, st.OpeningPrompt, st.ResponsePrompt, st.ConclusionPrompt, st.UpdatedAt, st.ID)
+	if err != nil {
+		return fmt.Errorf("failed to update style: %w", err)
+	}
+	return nil
+}
+
+// DeleteStyle deletes a style.
+func (s *SQLiteStorage) DeleteStyle(id string) error {
+	existing, err := s.GetStyle(id)
+	if err != nil {
+		return err
+	}
+	if existing != nil && existing.IsBuiltin {
+		return fmt.Errorf("cannot delete builtin style")
+	}
+
+	_, err = s.db.Exec("DELETE FROM styles WHERE id = ? AND is_builtin = 0", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete style: %w", err)
+	}
+	return nil
+}
+
+// ListStyles returns all styles.
+func (s *SQLiteStorage) ListStyles(includeBuiltin bool) ([]*Style, error) {
+	query := `
+	SELECT id, name, description, opening_prompt, response_prompt, conclusion_prompt, is_builtin, created_at, updated_at
+	FROM styles
+	`
+	if !includeBuiltin {
+		query += " WHERE is_builtin = 0"
+	}
+	query += " ORDER BY is_builtin DESC, name ASC"
+
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list styles: %w", err)
+	}
+	defer rows.Close()
+
+	var styles []*Style
+	for rows.Next() {
+		var st Style
+		var isBuiltin int
+		err := rows.Scan(&st.ID, &st.Name, &st.Description, &st.OpeningPrompt, &st.ResponsePrompt, &st.ConclusionPrompt, &isBuiltin, &st.CreatedAt, &st.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan style: %w", err)
+		}
+		st.IsBuiltin = isBuiltin == 1
+		styles = append(styles, &st)
+	}
+
+	return styles, nil
 }
