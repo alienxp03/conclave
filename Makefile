@@ -1,4 +1,4 @@
-.PHONY: build test clean run serve help
+.PHONY: build test clean run serve help install install-user install-gopath uninstall
 
 # Binary names
 CLI_BINARY=dbate
@@ -52,9 +52,39 @@ run: build-cli ## Build and show CLI help
 serve: build-cli ## Build and start web server
 	./$(BUILD_DIR)/$(CLI_BINARY) serve
 
-install: build ## Install binaries to $GOPATH/bin
-	cp $(BUILD_DIR)/$(CLI_BINARY) $(GOPATH)/bin/
-	@echo "Installed $(CLI_BINARY) to $(GOPATH)/bin/"
+install: build ## Install dbate to /usr/local/bin (may require sudo)
+	@if [ -w /usr/local/bin ]; then \
+		cp $(BUILD_DIR)/$(CLI_BINARY) /usr/local/bin/; \
+		echo "Installed $(CLI_BINARY) to /usr/local/bin/"; \
+	else \
+		echo "Installing to /usr/local/bin requires sudo"; \
+		sudo cp $(BUILD_DIR)/$(CLI_BINARY) /usr/local/bin/; \
+		echo "Installed $(CLI_BINARY) to /usr/local/bin/"; \
+	fi
+
+install-user: build ## Install dbate to ~/.local/bin (no sudo)
+	@mkdir -p ~/.local/bin
+	cp $(BUILD_DIR)/$(CLI_BINARY) ~/.local/bin/
+	@echo "Installed $(CLI_BINARY) to ~/.local/bin/"
+	@echo "Ensure ~/.local/bin is in your PATH"
+
+install-gopath: build ## Install dbate to GOPATH/bin
+	@if [ -z "$(GOPATH)" ]; then \
+		echo "GOPATH not set, using ~/go/bin"; \
+		mkdir -p ~/go/bin; \
+		cp $(BUILD_DIR)/$(CLI_BINARY) ~/go/bin/; \
+		echo "Installed $(CLI_BINARY) to ~/go/bin/"; \
+	else \
+		cp $(BUILD_DIR)/$(CLI_BINARY) $(GOPATH)/bin/; \
+		echo "Installed $(CLI_BINARY) to $(GOPATH)/bin/"; \
+	fi
+
+uninstall: ## Remove dbate from common locations
+	@rm -f /usr/local/bin/$(CLI_BINARY) 2>/dev/null || true
+	@rm -f ~/.local/bin/$(CLI_BINARY) 2>/dev/null || true
+	@rm -f $(GOPATH)/bin/$(CLI_BINARY) 2>/dev/null || true
+	@rm -f ~/go/bin/$(CLI_BINARY) 2>/dev/null || true
+	@echo "Uninstalled $(CLI_BINARY)"
 
 deps: ## Download dependencies
 	$(GOGET) -v ./...

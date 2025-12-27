@@ -68,10 +68,11 @@ type Vote struct {
 
 // Conclusion represents the outcome of a debate.
 type Conclusion struct {
-	Agreed        bool   `json:"agreed"`
-	Summary       string `json:"summary"`
-	AgentASummary string `json:"agent_a_summary,omitempty"`
-	AgentBSummary string `json:"agent_b_summary,omitempty"`
+	Agreed         bool   `json:"agreed"`
+	Summary        string `json:"summary"`
+	AgentASummary  string `json:"agent_a_summary,omitempty"`
+	AgentBSummary  string `json:"agent_b_summary,omitempty"`
+	EarlyConsensus bool   `json:"early_consensus,omitempty"` // True if debate ended early due to consensus
 	AgentAVote    *Vote  `json:"agent_a_vote,omitempty"`
 	AgentBVote    *Vote  `json:"agent_b_vote,omitempty"`
 }

@@ -146,7 +146,11 @@
     <div class="bg-white shadow-sm rounded-lg p-6">
         <h2 class="text-lg font-bold text-gray-900 mb-4">
             {{if .Debate.Conclusion.Agreed}}
-            🤝 Conclusion - Consensus Reached
+                {{if .Debate.Conclusion.EarlyConsensus}}
+                🤝 Conclusion - Consensus Reached Early!
+                {{else}}
+                🤝 Conclusion - Consensus Reached
+                {{end}}
             {{else}}
             ⚔️ Conclusion - No Consensus
             {{end}}

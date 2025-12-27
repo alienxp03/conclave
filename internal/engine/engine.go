@@ -171,6 +171,8 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 
 	// Execute turns
 	totalTurns := debate.MaxTurns * 2
+	earlyConsensus := false
+
 	for turnNum := 1; turnNum <= totalTurns; turnNum++ {
 		select {
 		case <-ctx.Done():
@@ -194,6 +196,15 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 		if callback != nil {
 			callback(turn, debate)
 		}
+
+		// Check for early consensus after each complete round (both agents spoke)
+		// Start checking after turn 4 (minimum 2 rounds of discussion)
+		if turnNum >= 4 && turnNum%2 == 0 && turnNum < totalTurns {
+			if e.checkEarlyConsensus(ctx, debate) {
+				earlyConsensus = true
+				break
+			}
+		}
 	}
 
 	// Generate conclusion
@@ -208,6 +219,10 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 		debate.Conclusion = conclusion
 	}
 
+	if earlyConsensus {
+		debate.Conclusion.EarlyConsensus = true
+	}
+
 	// Mark as completed
 	now := time.Now()
 	debate.Status = core.StatusCompleted
@@ -217,6 +232,90 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 	}
 
 	return nil
+}
+
+// checkEarlyConsensus checks if both agents have reached agreement.
+func (e *Engine) checkEarlyConsensus(ctx context.Context, debate *core.Debate) bool {
+	turns, err := e.storage.GetTurns(debate.ID)
+	if err != nil || len(turns) < 2 {
+		return false
+	}
+
+	// Get last two turns (one from each agent)
+	lastTurn := turns[len(turns)-1]
+	prevTurn := turns[len(turns)-2]
+
+	// Check for consensus signals in recent responses
+	consensusSignals := []string{
+		"i agree",
+		"we agree",
+		"consensus",
+		"common ground",
+		"we've reached",
+		"i concur",
+		"you're right",
+		"you are right",
+		"that's a fair point",
+		"i accept",
+		"we can conclude",
+		"in agreement",
+	}
+
+	lastLower := strings.ToLower(lastTurn.Content)
+	prevLower := strings.ToLower(prevTurn.Content)
+
+	lastHasSignal := false
+	prevHasSignal := false
+
+	for _, signal := range consensusSignals {
+		if strings.Contains(lastLower, signal) {
+			lastHasSignal = true
+		}
+		if strings.Contains(prevLower, signal) {
+			prevHasSignal = true
+		}
+	}
+
+	// If both recent turns show agreement signals, verify with a quick check
+	if lastHasSignal && prevHasSignal {
+		return e.verifyConsensus(ctx, debate)
+	}
+
+	return false
+}
+
+// verifyConsensus asks one agent to confirm if consensus has been reached.
+func (e *Engine) verifyConsensus(ctx context.Context, debate *core.Debate) bool {
+	prov, err := e.registry.Get(debate.AgentA.Provider)
+	if err != nil {
+		return false
+	}
+
+	turns, _ := e.storage.GetTurns(debate.ID)
+	history := e.buildDebateHistory(debate, turns)
+
+	prompt := fmt.Sprintf(`You are reviewing a debate on: "%s"
+
+Recent discussion:
+%s
+
+Based on the last few exchanges, have both participants clearly reached a consensus or agreement on the main points?
+
+Answer with only YES or NO.`, debate.Topic, history)
+
+	var response string
+	if debate.AgentA.Model != "" {
+		response, err = prov.GenerateWithModel(ctx, prompt, debate.AgentA.Model)
+	} else {
+		response, err = prov.Generate(ctx, prompt)
+	}
+
+	if err != nil {
+		return false
+	}
+
+	responseLower := strings.ToLower(strings.TrimSpace(response))
+	return strings.HasPrefix(responseLower, "yes")
 }
 
 // executeTurn executes a single turn in the debate.

@@ -328,7 +328,11 @@ func showConclusion(eng *engine.Engine, debateID string) error {
 
 	fmt.Println()
 	if debate.Conclusion.Agreed {
-		fmt.Println("🤝 Consensus Reached!")
+		if debate.Conclusion.EarlyConsensus {
+			fmt.Println("🤝 Consensus Reached Early!")
+		} else {
+			fmt.Println("🤝 Consensus Reached!")
+		}
 	} else {
 		fmt.Println("⚔️  No Consensus")
 	}
