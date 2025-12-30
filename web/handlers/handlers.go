@@ -132,8 +132,8 @@ func (h *Handler) handleDebatesList(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Debates":   debates,
 		"Providers": h.registry.Available(),
-		"Personas":  persona.DefaultPersonas(),
-		"Styles":    style.DefaultStyles(),
+		"Personas":  h.getAllPersonas(),
+		"Styles":    h.getAllStyles(),
 	}
 
 	h.render(w, "index.html", data)
@@ -162,8 +162,8 @@ func (h *Handler) handleDebateView(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleNewDebateForm(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Providers": h.registry.Available(),
-		"Personas":  persona.DefaultPersonas(),
-		"Styles":    style.DefaultStyles(),
+		"Personas":  h.getAllPersonas(),
+		"Styles":    h.getAllStyles(),
 	}
 	h.render(w, "new.html", data)
 }
@@ -484,4 +484,52 @@ func (h *Handler) htmxError(w http.ResponseWriter, message string) {
 	w.Header().Set("HX-Reswap", "innerHTML")
 	w.WriteHeader(http.StatusBadRequest)
 	w.Write([]byte(`<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">` + template.HTMLEscapeString(message) + `</div>`))
+}
+
+// getAllPersonas returns all personas (builtin + custom from storage).
+func (h *Handler) getAllPersonas() []persona.Persona {
+	// Start with builtins
+	result := persona.DefaultPersonas()
+
+	// Add custom personas from storage
+	custom, err := h.storage.ListPersonas(false) // false = exclude builtins (we already have them)
+	if err != nil {
+		return result
+	}
+
+	for _, p := range custom {
+		result = append(result, persona.Persona{
+			ID:           p.ID,
+			Name:         p.Name,
+			Description:  p.Description,
+			SystemPrompt: p.SystemPrompt,
+		})
+	}
+
+	return result
+}
+
+// getAllStyles returns all styles (builtin + custom from storage).
+func (h *Handler) getAllStyles() []style.Style {
+	// Start with builtins
+	result := style.DefaultStyles()
+
+	// Add custom styles from storage
+	custom, err := h.storage.ListStyles(false) // false = exclude builtins (we already have them)
+	if err != nil {
+		return result
+	}
+
+	for _, s := range custom {
+		result = append(result, style.Style{
+			ID:               s.ID,
+			Name:             s.Name,
+			Description:      s.Description,
+			OpeningPrompt:    s.OpeningPrompt,
+			ResponsePrompt:   s.ResponsePrompt,
+			ConclusionPrompt: s.ConclusionPrompt,
+		})
+	}
+
+	return result
 }

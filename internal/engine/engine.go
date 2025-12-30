@@ -52,16 +52,19 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 		return nil, fmt.Errorf("provider %s is not available (CLI not found)", config.AgentBProvider)
 	}
 
-	// Validate personas
-	if !persona.Valid(config.AgentAPersona) {
+	// Validate personas (check builtin first, then storage)
+	personaADef := e.getPersona(config.AgentAPersona)
+	if personaADef == nil {
 		return nil, fmt.Errorf("invalid persona for agent A: %s", config.AgentAPersona)
 	}
-	if !persona.Valid(config.AgentBPersona) {
+	personaBDef := e.getPersona(config.AgentBPersona)
+	if personaBDef == nil {
 		return nil, fmt.Errorf("invalid persona for agent B: %s", config.AgentBPersona)
 	}
 
-	// Validate style
-	if !style.Valid(config.Style) {
+	// Validate style (check builtin first, then storage)
+	styleDef := e.getStyle(config.Style)
+	if styleDef == nil {
 		return nil, fmt.Errorf("invalid debate style: %s", config.Style)
 	}
 
@@ -83,14 +86,14 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 		Topic: config.Topic,
 		AgentA: core.Agent{
 			ID:       uuid.New().String(),
-			Name:     fmt.Sprintf("Agent A (%s)", persona.Get(config.AgentAPersona).Name),
+			Name:     fmt.Sprintf("Agent A (%s)", personaADef.Name),
 			Provider: config.AgentAProvider,
 			Model:    config.AgentAModel,
 			Persona:  config.AgentAPersona,
 		},
 		AgentB: core.Agent{
 			ID:       uuid.New().String(),
-			Name:     fmt.Sprintf("Agent B (%s)", persona.Get(config.AgentBPersona).Name),
+			Name:     fmt.Sprintf("Agent B (%s)", personaBDef.Name),
 			Provider: config.AgentBProvider,
 			Model:    config.AgentBModel,
 			Persona:  config.AgentBPersona,
@@ -108,6 +111,50 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 	}
 
 	return debate, nil
+}
+
+// getPersona retrieves a persona by ID from builtins or storage.
+func (e *Engine) getPersona(id string) *persona.Persona {
+	// Check builtin first
+	if p := persona.Get(id); p != nil {
+		return p
+	}
+
+	// Check storage for custom persona
+	stored, err := e.storage.GetPersona(id)
+	if err != nil || stored == nil {
+		return nil
+	}
+
+	return &persona.Persona{
+		ID:           stored.ID,
+		Name:         stored.Name,
+		Description:  stored.Description,
+		SystemPrompt: stored.SystemPrompt,
+	}
+}
+
+// getStyle retrieves a style by ID from builtins or storage.
+func (e *Engine) getStyle(id string) *style.Style {
+	// Check builtin first
+	if s := style.Get(id); s != nil {
+		return s
+	}
+
+	// Check storage for custom style
+	stored, err := e.storage.GetStyle(id)
+	if err != nil || stored == nil {
+		return nil
+	}
+
+	return &style.Style{
+		ID:               stored.ID,
+		Name:             stored.Name,
+		Description:      stored.Description,
+		OpeningPrompt:    stored.OpeningPrompt,
+		ResponsePrompt:   stored.ResponsePrompt,
+		ConclusionPrompt: stored.ConclusionPrompt,
+	}
 }
 
 // GetDebate retrieves a debate by ID.
@@ -368,8 +415,8 @@ func (e *Engine) executeTurn(ctx context.Context, debate *core.Debate, agent cor
 
 // buildPrompt constructs the prompt for an agent's turn.
 func (e *Engine) buildPrompt(debate *core.Debate, agent core.Agent, turns []*core.Turn, turnNum int, isLastTurn bool) (string, error) {
-	personaDef := persona.Get(agent.Persona)
-	styleDef := style.Get(debate.Style)
+	personaDef := e.getPersona(agent.Persona)
+	styleDef := e.getStyle(debate.Style)
 
 	if personaDef == nil || styleDef == nil {
 		return "", fmt.Errorf("invalid persona or style")

@@ -797,15 +797,73 @@ var personaDeleteCmd = &cobra.Command{
 	},
 }
 
+var personaUpdateCmd = &cobra.Command{
+	Use:   "update [id]",
+	Short: "Update a custom persona",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id := args[0]
+
+		// Prevent updating builtins
+		if persona.Get(id) != nil {
+			return fmt.Errorf("cannot update builtin persona: %s", id)
+		}
+
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+
+		// Get existing persona
+		existing, err := sqlStore.GetPersona(id)
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			return fmt.Errorf("persona not found: %s", id)
+		}
+
+		// Update fields if provided
+		name, _ := cmd.Flags().GetString("name")
+		desc, _ := cmd.Flags().GetString("description")
+		prompt, _ := cmd.Flags().GetString("prompt")
+
+		if name != "" {
+			existing.Name = name
+		}
+		if desc != "" {
+			existing.Description = desc
+		}
+		if prompt != "" {
+			existing.SystemPrompt = prompt
+		}
+
+		if err := sqlStore.UpdatePersona(existing); err != nil {
+			return err
+		}
+
+		fmt.Printf("Updated persona: %s\n", id)
+		return nil
+	},
+}
+
 func init() {
 	personaCreateCmd.Flags().String("id", "", "Persona ID (required)")
 	personaCreateCmd.Flags().String("name", "", "Persona name (required)")
 	personaCreateCmd.Flags().String("description", "", "Persona description")
 	personaCreateCmd.Flags().String("prompt", "", "System prompt (required)")
 
+	personaUpdateCmd.Flags().String("name", "", "New persona name")
+	personaUpdateCmd.Flags().String("description", "", "New description")
+	personaUpdateCmd.Flags().String("prompt", "", "New system prompt")
+
 	personasCmd.AddCommand(personaListCmd)
 	personasCmd.AddCommand(personaShowCmd)
 	personasCmd.AddCommand(personaCreateCmd)
+	personasCmd.AddCommand(personaUpdateCmd)
 	personasCmd.AddCommand(personaDeleteCmd)
 }
 
@@ -988,6 +1046,67 @@ var styleDeleteCmd = &cobra.Command{
 	},
 }
 
+var styleUpdateCmd = &cobra.Command{
+	Use:   "update [id]",
+	Short: "Update a custom style",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		id := args[0]
+
+		// Prevent updating builtins
+		if style.Get(id) != nil {
+			return fmt.Errorf("cannot update builtin style: %s", id)
+		}
+
+		store, err := getStorage()
+		if err != nil {
+			return err
+		}
+		defer store.Close()
+
+		sqlStore := store.(*storage.SQLiteStorage)
+
+		// Get existing style
+		existing, err := sqlStore.GetStyle(id)
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			return fmt.Errorf("style not found: %s", id)
+		}
+
+		// Update fields if provided
+		name, _ := cmd.Flags().GetString("name")
+		desc, _ := cmd.Flags().GetString("description")
+		opening, _ := cmd.Flags().GetString("opening")
+		response, _ := cmd.Flags().GetString("response")
+		conclusion, _ := cmd.Flags().GetString("conclusion")
+
+		if name != "" {
+			existing.Name = name
+		}
+		if desc != "" {
+			existing.Description = desc
+		}
+		if opening != "" {
+			existing.OpeningPrompt = opening
+		}
+		if response != "" {
+			existing.ResponsePrompt = response
+		}
+		if conclusion != "" {
+			existing.ConclusionPrompt = conclusion
+		}
+
+		if err := sqlStore.UpdateStyle(existing); err != nil {
+			return err
+		}
+
+		fmt.Printf("Updated style: %s\n", id)
+		return nil
+	},
+}
+
 func init() {
 	styleCreateCmd.Flags().String("id", "", "Style ID (required)")
 	styleCreateCmd.Flags().String("name", "", "Style name (required)")
@@ -996,9 +1115,16 @@ func init() {
 	styleCreateCmd.Flags().String("response", "", "Response prompt template (required)")
 	styleCreateCmd.Flags().String("conclusion", "", "Conclusion prompt template (required)")
 
+	styleUpdateCmd.Flags().String("name", "", "New style name")
+	styleUpdateCmd.Flags().String("description", "", "New description")
+	styleUpdateCmd.Flags().String("opening", "", "New opening prompt template")
+	styleUpdateCmd.Flags().String("response", "", "New response prompt template")
+	styleUpdateCmd.Flags().String("conclusion", "", "New conclusion prompt template")
+
 	stylesCmd.AddCommand(styleListCmd)
 	stylesCmd.AddCommand(styleShowCmd)
 	stylesCmd.AddCommand(styleCreateCmd)
+	stylesCmd.AddCommand(styleUpdateCmd)
 	stylesCmd.AddCommand(styleDeleteCmd)
 }
 

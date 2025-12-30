@@ -24,4 +24,12 @@ type Storage interface {
 	AddTurn(turn *core.Turn) error
 	GetTurns(debateID string) ([]*core.Turn, error)
 	GetLatestTurn(debateID string) (*core.Turn, error)
+
+	// Persona operations
+	GetPersona(id string) (*Persona, error)
+	ListPersonas(includeBuiltin bool) ([]*Persona, error)
+
+	// Style operations
+	GetStyle(id string) (*Style, error)
+	ListStyles(includeBuiltin bool) ([]*Style, error)
 }
