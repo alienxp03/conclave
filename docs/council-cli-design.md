@@ -26,7 +26,7 @@ provider[/model][:persona]
 
 ```bash
 # Minimal - 4 members, auto-assign personas
-dbate new "Should we adopt GraphQL?" claude gemini qwen codex
+dbate new "Should we adopt GraphQL?" --models claude,gemini,qwen,codex
 
 # Output:
 Creating council with 4 members:
@@ -47,31 +47,20 @@ Council ID: a3f9d8c1
 ### Specify Personas
 
 ```bash
-dbate new "topic" \
-  claude:optimist \
-  gemini:skeptic \
-  qwen:pragmatist \
-  codex:analyst
+dbate new "topic" --models claude:optimist,gemini:skeptic,qwen:pragmatist,codex:analyst
 ```
 
 ### Specify Models
 
 ```bash
-dbate new "topic" \
-  claude/opus \
-  gemini/pro \
-  qwen/max \
-  codex/gpt4
+dbate new "topic" --models claude/opus,gemini/pro,qwen/max,codex/gpt4
 ```
 
 ### Full Control
 
 ```bash
 dbate new "topic" \
-  claude/opus:optimist \
-  gemini/pro:skeptic \
-  qwen/max:pragmatist \
-  codex/gpt4:analyst \
+  --models claude/opus:optimist,gemini/pro:skeptic,qwen/max:pragmatist,codex/gpt4:analyst \
   --chairman claude/opus
 ```
 
@@ -79,16 +68,26 @@ dbate new "topic" \
 
 ```bash
 # Some with models, some with personas, some with both
-dbate new "topic" \
-  claude/opus:optimist \
-  gemini:skeptic \
-  qwen/max \
-  codex
+dbate new "topic" --models claude/opus:optimist,gemini:skeptic,qwen/max,codex
 ```
 
-## Flags (Minimal)
+## Flags
 
-### Chairman
+### Required: --models
+
+```bash
+--models <comma-separated-list>
+
+# Format: provider[/model][:persona],provider[/model][:persona],...
+
+# Examples:
+--models claude,gemini,qwen,codex
+--models claude:optimist,gemini:skeptic,qwen:pragmatist
+--models claude/opus,gemini/pro,qwen/max
+--models claude/opus:optimist,gemini/pro:skeptic,qwen/max:pragmatist
+```
+
+### Optional: --chairman
 
 ```bash
 --chairman <provider[/model]>
@@ -102,15 +101,25 @@ dbate new "topic" \
 # If members include 'claude', chairman = 'claude/opus'
 ```
 
-### Auto-run Control
+### Optional: --no-run
 
 ```bash
 --no-run    # Create council but don't run (run manually later)
 
 # Example:
-dbate new "topic" claude gemini qwen --no-run
+dbate new "topic" --models claude,gemini,qwen --no-run
 # Council ID: abc123
 dbate run abc123   # Run it later
+```
+
+### Future flags (extensibility)
+
+```bash
+--max-turns <n>          # Limit response length
+--temperature <0.0-1.0>  # Control randomness
+--parallel <bool>        # Force sequential if needed
+--format <json|yaml>     # Output format
+--save-to <file>         # Auto-export
 ```
 
 ## Persona Auto-Assignment
@@ -337,20 +346,17 @@ dbate new "topic" -a claude:optimist -b gemini:skeptic -s adversarial
 
 New (N-agent councils):
 ```bash
-dbate new "topic" claude:optimist gemini:skeptic
+dbate new "topic" --models claude:optimist,gemini:skeptic
 ```
 
-Simpler, scales to N agents naturally.
+More extensible with flags, scales to N agents naturally.
 
 ## Full Example Session
 
 ```bash
 # Create council
 $ dbate new "Should we adopt Rust for backend services?" \
-    claude/opus:optimist \
-    gemini/pro:skeptic \
-    qwen:pragmatist \
-    codex:analyst
+    --models claude/opus:optimist,gemini/pro:skeptic,qwen:pragmatist,codex:analyst
 
 Creating council with 4 members...
 Running council stages...
@@ -382,15 +388,13 @@ a3f9d8c1  Should we adopt GraphQL?       4        completed   2 hours ago
 
 ```bash
 # Create custom persona
-$ dbate persona create "security_expert" \
+$ dbate persona create security_expert \
   --description "Focuses on security implications" \
   --prompt "You are a security expert. Analyze everything from a security perspective..."
 
 # Use in council
 $ dbate new "API design patterns" \
-    claude:security_expert \
-    gemini:optimist \
-    qwen:pragmatist
+    --models claude:security_expert,gemini:optimist,qwen:pragmatist
 ```
 
 ## Provider Management
@@ -421,19 +425,17 @@ Timeout: 5m
 **Simple patterns:**
 ```bash
 # Minimal
-dbate new "topic" claude gemini qwen
+dbate new "topic" --models claude,gemini,qwen
 
 # With personas
-dbate new "topic" claude:optimist gemini:skeptic qwen:pragmatist
+dbate new "topic" --models claude:optimist,gemini:skeptic,qwen:pragmatist
 
 # With models
-dbate new "topic" claude/opus gemini/pro qwen/max
+dbate new "topic" --models claude/opus,gemini/pro,qwen/max
 
 # Full control
 dbate new "topic" \
-  claude/opus:optimist \
-  gemini/pro:skeptic \
-  qwen/max:pragmatist \
+  --models claude/opus:optimist,gemini/pro:skeptic,qwen/max:pragmatist \
   --chairman claude/opus
 
 # View and export
@@ -441,4 +443,4 @@ dbate show <id>
 dbate export <id> pdf
 ```
 
-**No complexity unless you need it.**
+**Extensible with flags. No complexity unless you need it.**
