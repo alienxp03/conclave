@@ -114,3 +114,66 @@ func (d *Debate) IsModifiable() bool {
 func (d *Debate) TotalTurns() int {
 	return d.MaxTurns * 2
 }
+
+// Council represents a multi-agent council session.
+type Council struct {
+	ID          string         `json:"id"`
+	Topic       string         `json:"topic"`
+	Members     []Agent        `json:"members"`
+	Chairman    Agent          `json:"chairman"`
+	Status      DebateStatus   `json:"status"`
+	Synthesis   string         `json:"synthesis,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+}
+
+// Response represents a council member's response in Stage 1.
+type Response struct {
+	ID        string    `json:"id"`
+	CouncilID string    `json:"council_id"`
+	MemberID  string    `json:"member_id"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Ranking represents a council member's rankings of all responses in Stage 2.
+type Ranking struct {
+	ID         string    `json:"id"`
+	CouncilID  string    `json:"council_id"`
+	ReviewerID string    `json:"reviewer_id"`
+	Rankings   []string  `json:"rankings"` // Ordered list of response IDs (best to worst)
+	Reasoning  string    `json:"reasoning,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// CouncilSummary is a lightweight representation for listing councils.
+type CouncilSummary struct {
+	ID          string       `json:"id"`
+	Topic       string       `json:"topic"`
+	Status      DebateStatus `json:"status"`
+	MemberCount int          `json:"member_count"`
+	CreatedAt   time.Time    `json:"created_at"`
+}
+
+// NewCouncilConfig holds the configuration for creating a new council.
+type NewCouncilConfig struct {
+	Topic    string
+	Members  []MemberSpec
+	Chairman *MemberSpec // Optional, defaults to first member's provider with best model
+}
+
+// MemberSpec specifies a council member: provider[/model][:persona]
+type MemberSpec struct {
+	Provider string
+	Model    string // Optional, defaults to provider's default
+	Persona  string // Optional, auto-assigned if empty
+}
+
+// AggregateRanking holds the aggregated ranking data for a response.
+type AggregateRanking struct {
+	ResponseID string
+	MemberID   string
+	Positions  []int   // Position in each reviewer's ranking (1-based)
+	AvgRank    float64 // Average position across all rankings
+}

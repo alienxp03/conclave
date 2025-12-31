@@ -32,4 +32,19 @@ type Storage interface {
 	// Style operations
 	GetStyle(id string) (*Style, error)
 	ListStyles(includeBuiltin bool) ([]*Style, error)
+
+	// Council operations
+	CreateCouncil(council *core.Council) error
+	GetCouncil(id string) (*core.Council, error)
+	UpdateCouncil(council *core.Council) error
+	DeleteCouncil(id string) error
+	ListCouncils(limit, offset int) ([]*core.CouncilSummary, error)
+
+	// Response operations
+	AddResponse(response *core.Response) error
+	GetResponses(councilID string) ([]*core.Response, error)
+
+	// Ranking operations
+	AddRanking(ranking *core.Ranking) error
+	GetRankings(councilID string) ([]*core.Ranking, error)
 }

@@ -96,11 +96,59 @@ func (s *SQLiteStorage) Initialize() error {
 		updated_at DATETIME NOT NULL
 	);
 
+	CREATE TABLE IF NOT EXISTS councils (
+		id TEXT PRIMARY KEY,
+		topic TEXT NOT NULL,
+		chairman_json TEXT NOT NULL,
+		status TEXT NOT NULL DEFAULT 'pending',
+		synthesis TEXT,
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL,
+		completed_at DATETIME
+	);
+
+	CREATE TABLE IF NOT EXISTS council_members (
+		id TEXT PRIMARY KEY,
+		council_id TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		model TEXT NOT NULL,
+		persona TEXT NOT NULL,
+		display_name TEXT NOT NULL,
+		created_at DATETIME NOT NULL,
+		FOREIGN KEY (council_id) REFERENCES councils(id) ON DELETE CASCADE
+	);
+
+	CREATE TABLE IF NOT EXISTS responses (
+		id TEXT PRIMARY KEY,
+		council_id TEXT NOT NULL,
+		member_id TEXT NOT NULL,
+		content TEXT NOT NULL,
+		created_at DATETIME NOT NULL,
+		FOREIGN KEY (council_id) REFERENCES councils(id) ON DELETE CASCADE,
+		FOREIGN KEY (member_id) REFERENCES council_members(id) ON DELETE CASCADE
+	);
+
+	CREATE TABLE IF NOT EXISTS rankings (
+		id TEXT PRIMARY KEY,
+		council_id TEXT NOT NULL,
+		reviewer_id TEXT NOT NULL,
+		rankings_json TEXT NOT NULL,
+		reasoning TEXT,
+		created_at DATETIME NOT NULL,
+		FOREIGN KEY (council_id) REFERENCES councils(id) ON DELETE CASCADE,
+		FOREIGN KEY (reviewer_id) REFERENCES council_members(id) ON DELETE CASCADE
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_turns_debate_id ON turns(debate_id);
 	CREATE INDEX IF NOT EXISTS idx_debates_status ON debates(status);
 	CREATE INDEX IF NOT EXISTS idx_debates_created_at ON debates(created_at DESC);
 	CREATE INDEX IF NOT EXISTS idx_personas_is_builtin ON personas(is_builtin);
 	CREATE INDEX IF NOT EXISTS idx_styles_is_builtin ON styles(is_builtin);
+	CREATE INDEX IF NOT EXISTS idx_council_members_council_id ON council_members(council_id);
+	CREATE INDEX IF NOT EXISTS idx_responses_council_id ON responses(council_id);
+	CREATE INDEX IF NOT EXISTS idx_rankings_council_id ON rankings(council_id);
+	CREATE INDEX IF NOT EXISTS idx_councils_status ON councils(status);
+	CREATE INDEX IF NOT EXISTS idx_councils_created_at ON councils(created_at DESC);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -770,4 +818,363 @@ func (s *SQLiteStorage) ListStyles(includeBuiltin bool) ([]*Style, error) {
 	}
 
 	return styles, nil
+}
+
+// CreateCouncil creates a new council.
+func (s *SQLiteStorage) CreateCouncil(council *core.Council) error {
+	chairmanJSON, err := json.Marshal(council.Chairman)
+	if err != nil {
+		return fmt.Errorf("failed to marshal chairman: %w", err)
+	}
+
+	query := `
+	INSERT INTO councils (id, topic, chairman_json, status, synthesis, created_at, updated_at, completed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
+
+	var completedAt *time.Time
+	if council.CompletedAt != nil {
+		completedAt = council.CompletedAt
+	}
+
+	_, err = s.db.Exec(query,
+		council.ID,
+		council.Topic,
+		string(chairmanJSON),
+		council.Status,
+		council.Synthesis,
+		council.CreatedAt,
+		council.UpdatedAt,
+		completedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert council: %w", err)
+	}
+
+	// Insert members
+	for _, member := range council.Members {
+		err := s.insertCouncilMember(council.ID, member)
+		if err != nil {
+			return fmt.Errorf("failed to insert member: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *SQLiteStorage) insertCouncilMember(councilID string, member core.Agent) error {
+	query := `
+	INSERT INTO council_members (id, council_id, provider, model, persona, display_name, created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := s.db.Exec(query,
+		member.ID,
+		councilID,
+		member.Provider,
+		member.Model,
+		member.Persona,
+		member.Name,
+		time.Now(),
+	)
+
+	return err
+}
+
+// GetCouncil retrieves a council by ID.
+func (s *SQLiteStorage) GetCouncil(id string) (*core.Council, error) {
+	query := `
+	SELECT id, topic, chairman_json, status, synthesis, created_at, updated_at, completed_at
+	FROM councils
+	WHERE id = ?
+	`
+
+	var council core.Council
+	var chairmanJSON string
+	var synthesis sql.NullString
+	var completedAt sql.NullTime
+
+	err := s.db.QueryRow(query, id).Scan(
+		&council.ID,
+		&council.Topic,
+		&chairmanJSON,
+		&council.Status,
+		&synthesis,
+		&council.CreatedAt,
+		&council.UpdatedAt,
+		&completedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("council not found")
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get council: %w", err)
+	}
+
+	// Unmarshal chairman
+	if err := json.Unmarshal([]byte(chairmanJSON), &council.Chairman); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal chairman: %w", err)
+	}
+
+	if synthesis.Valid {
+		council.Synthesis = synthesis.String
+	}
+
+	if completedAt.Valid {
+		council.CompletedAt = &completedAt.Time
+	}
+
+	// Get members
+	members, err := s.getCouncilMembers(id)
+	if err != nil {
+		return nil, err
+	}
+	council.Members = members
+
+	return &council, nil
+}
+
+func (s *SQLiteStorage) getCouncilMembers(councilID string) ([]core.Agent, error) {
+	query := `
+	SELECT id, provider, model, persona, display_name
+	FROM council_members
+	WHERE council_id = ?
+	ORDER BY created_at ASC
+	`
+
+	rows, err := s.db.Query(query, councilID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get council members: %w", err)
+	}
+	defer rows.Close()
+
+	var members []core.Agent
+	for rows.Next() {
+		var member core.Agent
+		err := rows.Scan(
+			&member.ID,
+			&member.Provider,
+			&member.Model,
+			&member.Persona,
+			&member.Name,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan member: %w", err)
+		}
+		members = append(members, member)
+	}
+
+	return members, nil
+}
+
+// UpdateCouncil updates an existing council.
+func (s *SQLiteStorage) UpdateCouncil(council *core.Council) error {
+	chairmanJSON, err := json.Marshal(council.Chairman)
+	if err != nil {
+		return fmt.Errorf("failed to marshal chairman: %w", err)
+	}
+
+	query := `
+	UPDATE councils
+	SET topic = ?, chairman_json = ?, status = ?, synthesis = ?, updated_at = ?, completed_at = ?
+	WHERE id = ?
+	`
+
+	var completedAt *time.Time
+	if council.CompletedAt != nil {
+		completedAt = council.CompletedAt
+	}
+
+	_, err = s.db.Exec(query,
+		council.Topic,
+		string(chairmanJSON),
+		council.Status,
+		council.Synthesis,
+		council.UpdatedAt,
+		completedAt,
+		council.ID,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to update council: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteCouncil deletes a council.
+func (s *SQLiteStorage) DeleteCouncil(id string) error {
+	_, err := s.db.Exec("DELETE FROM councils WHERE id = ?", id)
+	if err != nil {
+		return fmt.Errorf("failed to delete council: %w", err)
+	}
+	return nil
+}
+
+// ListCouncils returns a list of councils.
+func (s *SQLiteStorage) ListCouncils(limit, offset int) ([]*core.CouncilSummary, error) {
+	query := `
+	SELECT
+		c.id,
+		c.topic,
+		c.status,
+		c.created_at,
+		COUNT(cm.id) as member_count
+	FROM councils c
+	LEFT JOIN council_members cm ON c.id = cm.council_id
+	GROUP BY c.id
+	ORDER BY c.created_at DESC
+	LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list councils: %w", err)
+	}
+	defer rows.Close()
+
+	var summaries []*core.CouncilSummary
+	for rows.Next() {
+		var summary core.CouncilSummary
+		err := rows.Scan(
+			&summary.ID,
+			&summary.Topic,
+			&summary.Status,
+			&summary.CreatedAt,
+			&summary.MemberCount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan council summary: %w", err)
+		}
+		summaries = append(summaries, &summary)
+	}
+
+	return summaries, nil
+}
+
+// AddResponse adds a response to a council.
+func (s *SQLiteStorage) AddResponse(response *core.Response) error {
+	query := `
+	INSERT INTO responses (id, council_id, member_id, content, created_at)
+	VALUES (?, ?, ?, ?, ?)
+	`
+
+	_, err := s.db.Exec(query,
+		response.ID,
+		response.CouncilID,
+		response.MemberID,
+		response.Content,
+		response.CreatedAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert response: %w", err)
+	}
+
+	return nil
+}
+
+// GetResponses returns all responses for a council.
+func (s *SQLiteStorage) GetResponses(councilID string) ([]*core.Response, error) {
+	query := `
+	SELECT id, council_id, member_id, content, created_at
+	FROM responses
+	WHERE council_id = ?
+	ORDER BY created_at ASC
+	`
+
+	rows, err := s.db.Query(query, councilID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get responses: %w", err)
+	}
+	defer rows.Close()
+
+	var responses []*core.Response
+	for rows.Next() {
+		var response core.Response
+		err := rows.Scan(
+			&response.ID,
+			&response.CouncilID,
+			&response.MemberID,
+			&response.Content,
+			&response.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan response: %w", err)
+		}
+		responses = append(responses, &response)
+	}
+
+	return responses, nil
+}
+
+// AddRanking adds a ranking to a council.
+func (s *SQLiteStorage) AddRanking(ranking *core.Ranking) error {
+	rankingsJSON, err := json.Marshal(ranking.Rankings)
+	if err != nil {
+		return fmt.Errorf("failed to marshal rankings: %w", err)
+	}
+
+	query := `
+	INSERT INTO rankings (id, council_id, reviewer_id, rankings_json, reasoning, created_at)
+	VALUES (?, ?, ?, ?, ?, ?)
+	`
+
+	_, err = s.db.Exec(query,
+		ranking.ID,
+		ranking.CouncilID,
+		ranking.ReviewerID,
+		string(rankingsJSON),
+		ranking.Reasoning,
+		ranking.CreatedAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to insert ranking: %w", err)
+	}
+
+	return nil
+}
+
+// GetRankings returns all rankings for a council.
+func (s *SQLiteStorage) GetRankings(councilID string) ([]*core.Ranking, error) {
+	query := `
+	SELECT id, council_id, reviewer_id, rankings_json, reasoning, created_at
+	FROM rankings
+	WHERE council_id = ?
+	ORDER BY created_at ASC
+	`
+
+	rows, err := s.db.Query(query, councilID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get rankings: %w", err)
+	}
+	defer rows.Close()
+
+	var rankings []*core.Ranking
+	for rows.Next() {
+		var ranking core.Ranking
+		var rankingsJSON string
+		err := rows.Scan(
+			&ranking.ID,
+			&ranking.CouncilID,
+			&ranking.ReviewerID,
+			&rankingsJSON,
+			&ranking.Reasoning,
+			&ranking.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan ranking: %w", err)
+		}
+
+		// Unmarshal rankings
+		if err := json.Unmarshal([]byte(rankingsJSON), &ranking.Rankings); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal rankings: %w", err)
+		}
+
+		rankings = append(rankings, &ranking)
+	}
+
+	return rankings, nil
 }
