@@ -3,17 +3,6 @@
 {{define "title"}}{{.Debate.Topic}} - conclave{{end}}
 
 {{define "content"}}
-<!-- Breadcrumb -->
-<nav class="mb-4" aria-label="Breadcrumb">
-    <ol class="flex items-center space-x-2 text-sm text-gray-400">
-        <li><a href="/" class="hover:text-white transition-colors">Home</a></li>
-        <li><span class="text-gray-600">/</span></li>
-        <li><a href="/debates" class="hover:text-white transition-colors">Debates</a></li>
-        <li><span class="text-gray-600">/</span></li>
-        <li class="text-gray-300">{{truncate .Debate.Topic 30}}</li>
-    </ol>
-</nav>
-
 <div class="space-y-6">
     <!-- Header -->
     <div class="bg-gray-800 shadow-xl rounded-xl p-8 border border-gray-700">

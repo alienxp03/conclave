@@ -424,9 +424,11 @@ func (h *Handler) handleAPIProviders(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		result = append(result, map[string]interface{}{
-			"name":         p.Name(),
-			"display_name": p.DisplayName(),
-			"available":    p.Available(),
+			"name":          p.Name(),
+			"display_name":  p.DisplayName(),
+			"available":     p.Available(),
+			"models":        p.Models(),
+			"default_model": p.DefaultModel(),
 		})
 	}
 

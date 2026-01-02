@@ -158,9 +158,18 @@ export function History() {
                   )}
                 </div>
 
-                <h3 className="text-lg font-semibold text-white mb-4 group-hover:text-brand-primary transition-colors line-clamp-2">
+                <h3 className="text-lg font-semibold text-white mb-2 group-hover:text-brand-primary transition-colors line-clamp-2">
                   {item.title || item.topic}
                 </h3>
+
+                {item.cwd && (
+                  <div className="flex items-center text-[#d3c6aa] text-[10px] font-mono mb-4 bg-brand-bg bg-opacity-40 px-2 py-1.5 rounded border border-brand-border w-fit truncate max-w-full shadow-sm">
+                    <svg className="w-3 h-3 mr-1.5 flex-shrink-0 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    {item.cwd}
+                  </div>
+                )}
 
                 <div className="mt-auto space-y-3">
                   <div className="flex items-center justify-between text-sm">

@@ -181,6 +181,14 @@ export function CouncilView() {
             <span>•</span>
             <span>Chairman: {council.chairman.name}</span>
           </div>
+          {council.cwd && (
+            <div className="mt-4 flex items-center text-[#d3c6aa] text-xs font-mono bg-brand-bg bg-opacity-40 px-3 py-1.5 rounded border border-brand-border w-fit shadow-inner">
+              <svg className="w-3.5 h-3.5 mr-1.5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <span className="opacity-60 mr-1 text-[#859289]">Session dir:</span> {council.cwd}
+            </div>
+          )}
         </div>
       </div>
 

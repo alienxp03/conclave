@@ -35,17 +35,25 @@ export function NewCouncil() {
     queryFn: () => api.getPersonas(),
   });
 
+  const { data: systemInfo } = useQuery({
+    queryKey: ['systemInfo'],
+    queryFn: () => api.getSystemInfo(),
+  });
+
   const isReady = !!(providers?.length && personas?.length);
 
   // Set defaults when data loads
   useEffect(() => {
     if (providers?.length && personas?.length) {
       const availableProviders = providers.filter(p => p.available && p.name !== 'mock');
-      const defaultProvider = availableProviders.length > 0 ? availableProviders[0].name : '';
+      const defaultProv = availableProviders.length > 0 ? availableProviders[0] : null;
+      const defaultProviderName = defaultProv?.name || '';
+      const defaultModelName = defaultProv?.default_model || '';
       
       // Initialize with default values if empty
       setMembers(prev => prev.map((m, i) => ({
-        Provider: m.Provider || defaultProvider,
+        Provider: m.Provider || defaultProviderName,
+        Model: m.Model || defaultModelName,
         Persona: m.Persona || (personas[i % personas.length]?.id || personas[0].id)
       })));
     }
@@ -54,12 +62,31 @@ export function NewCouncil() {
   const handleAddMember = () => {
     if (!providers || !personas) return;
     const availableProviders = providers.filter(p => p.available && p.name !== 'mock');
-    const defaultProvider = availableProviders.length > 0 ? availableProviders[0].name : '';
+    const defaultProv = availableProviders.length > 0 ? availableProviders[0] : null;
+    const defaultProviderName = defaultProv?.name || '';
+    const defaultModelName = defaultProv?.default_model || '';
     
     const newMembers = [...members, { 
-      Provider: defaultProvider, 
+      Provider: defaultProviderName, 
+      Model: defaultModelName,
       Persona: personas[members.length % personas.length]?.id || personas[0].id 
     }];
+    setMembers(newMembers);
+    localStorage.setItem('council_members', JSON.stringify(newMembers));
+  };
+
+  const handleMemberChange = (index: number, field: keyof MemberSpec, value: string) => {
+    const newMembers = [...members];
+    if (field === 'Provider') {
+      const provider = providers?.find(p => p.name === value);
+      newMembers[index] = { 
+        ...newMembers[index], 
+        Provider: value, 
+        Model: provider?.default_model || '' 
+      };
+    } else {
+      newMembers[index] = { ...newMembers[index], [field]: value };
+    }
     setMembers(newMembers);
     localStorage.setItem('council_members', JSON.stringify(newMembers));
   };
@@ -67,13 +94,6 @@ export function NewCouncil() {
   const handleRemoveMember = (index: number) => {
     if (members.length <= 2) return;
     const newMembers = members.filter((_, i) => i !== index);
-    setMembers(newMembers);
-    localStorage.setItem('council_members', JSON.stringify(newMembers));
-  };
-
-  const handleMemberChange = (index: number, field: keyof MemberSpec, value: string) => {
-    const newMembers = [...members];
-    newMembers[index] = { ...newMembers[index], [field]: value };
     setMembers(newMembers);
     localStorage.setItem('council_members', JSON.stringify(newMembers));
   };
@@ -135,6 +155,14 @@ export function NewCouncil() {
           <p className="text-lg text-gray-400">
             Gather AI agents to deliberate, rank perspectives, and reach a consensus
           </p>
+          {systemInfo?.cwd && (
+            <div className="mt-6 flex items-center text-[#d3c6aa] text-xs font-mono bg-brand-bg bg-opacity-40 px-3 py-1.5 rounded border border-brand-border w-fit shadow-inner mx-auto lg:mx-0">
+              <svg className="w-3.5 h-3.5 mr-1.5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <span className="opacity-60 mr-1 text-[#859289]">Running in:</span> {systemInfo.cwd}
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
@@ -178,7 +206,7 @@ export function NewCouncil() {
                     {index + 1}
                   </div>
                   
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <select
                         value={member.Provider}
@@ -189,6 +217,17 @@ export function NewCouncil() {
                           <option key={p.name} value={p.name} disabled={!p.available}>
                             {p.display_name} {!p.available && '(Unavailable)'}
                           </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <select
+                        value={member.Model}
+                        onChange={(e) => handleMemberChange(index, 'Model', e.target.value)}
+                        className="w-full bg-brand-card border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-sm"
+                      >
+                        {providers?.find(p => p.name === member.Provider)?.models.map((m) => (
+                          <option key={m} value={m}>{m}</option>
                         ))}
                       </select>
                     </div>

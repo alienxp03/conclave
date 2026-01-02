@@ -69,6 +69,8 @@ export interface Provider {
   name: string;
   display_name: string;
   available: boolean;
+  models: string[];
+  default_model: string;
 }
 
 export interface Persona {

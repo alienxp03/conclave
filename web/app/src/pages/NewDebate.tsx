@@ -38,24 +38,44 @@ export function NewDebate() {
     queryFn: () => api.getStyles(),
   });
 
+  const { data: systemInfo } = useQuery({
+    queryKey: ['systemInfo'],
+    queryFn: () => api.getSystemInfo(),
+  });
+
   const isReady = !!(providers?.length && personas?.length && styles?.length);
 
   // Set defaults when data loads
   useEffect(() => {
     if (providers?.length && personas?.length && styles?.length) {
       const availableProviders = providers.filter(p => p.available && p.name !== 'mock');
-      const defaultProvider = availableProviders.length > 0 ? availableProviders[0].name : '';
+      const defaultProv = availableProviders.length > 0 ? availableProviders[0] : null;
+      const defaultProviderName = defaultProv?.name || '';
+      const defaultModelName = defaultProv?.default_model || '';
       
       setConfig(prev => ({
         ...prev,
-        agent_a_provider: prev.agent_a_provider || defaultProvider,
-        agent_b_provider: prev.agent_b_provider || defaultProvider,
+        agent_a_provider: prev.agent_a_provider || defaultProviderName,
+        agent_a_model: prev.agent_a_model || defaultModelName,
+        agent_b_provider: prev.agent_b_provider || defaultProviderName,
+        agent_b_model: prev.agent_b_model || defaultModelName,
         agent_a_persona: prev.agent_a_persona || personas[0].id,
         agent_b_persona: prev.agent_b_persona || personas[1]?.id || personas[0].id,
         style: prev.style || styles[0].id,
       }));
     }
   }, [providers, personas, styles]);
+
+  const handleProviderChange = (agent: 'a' | 'b', providerName: string) => {
+    const provider = providers?.find(p => p.name === providerName);
+    const defaultModel = provider?.default_model || '';
+    
+    if (agent === 'a') {
+      setConfig({ ...config, agent_a_provider: providerName, agent_a_model: defaultModel });
+    } else {
+      setConfig({ ...config, agent_b_provider: providerName, agent_b_model: defaultModel });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,6 +143,14 @@ export function NewDebate() {
           <p className="text-lg text-gray-400">
             Enter a question and watch AI agents discuss different perspectives
           </p>
+          {systemInfo?.cwd && (
+            <div className="mt-6 flex items-center text-[#d3c6aa] text-xs font-mono bg-brand-bg bg-opacity-40 px-3 py-1.5 rounded border border-brand-border w-fit shadow-inner mx-auto lg:mx-0">
+              <svg className="w-3.5 h-3.5 mr-1.5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+              </svg>
+              <span className="opacity-60 mr-1 text-[#859289]">Running in:</span> {systemInfo.cwd}
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
@@ -181,13 +209,25 @@ export function NewDebate() {
                   <label className="block text-sm font-medium text-[#859289] mb-1">Provider</label>
                   <select
                     value={config.agent_a_provider}
-                    onChange={(e) => setConfig({ ...config, agent_a_provider: e.target.value })}
+                    onChange={(e) => handleProviderChange('a', e.target.value)}
                     className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
                   >
                     {providers?.filter(p => p.name !== 'mock').map((p) => (
                       <option key={p.name} value={p.name} disabled={!p.available}>
                         {p.display_name} {!p.available && '(Unavailable)'}
                       </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#859289] mb-1">Model</label>
+                  <select
+                    value={config.agent_a_model}
+                    onChange={(e) => setConfig({ ...config, agent_a_model: e.target.value })}
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                  >
+                    {providers?.find(p => p.name === config.agent_a_provider)?.models.map((m) => (
+                      <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
                 </div>
@@ -211,13 +251,25 @@ export function NewDebate() {
                   <label className="block text-sm font-medium text-[#859289] mb-1">Provider</label>
                   <select
                     value={config.agent_b_provider}
-                    onChange={(e) => setConfig({ ...config, agent_b_provider: e.target.value })}
+                    onChange={(e) => handleProviderChange('b', e.target.value)}
                     className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
                   >
                     {providers?.filter(p => p.name !== 'mock').map((p) => (
                       <option key={p.name} value={p.name} disabled={!p.available}>
                         {p.display_name} {!p.available && '(Unavailable)'}
                       </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#859289] mb-1">Model</label>
+                  <select
+                    value={config.agent_b_model}
+                    onChange={(e) => setConfig({ ...config, agent_b_model: e.target.value })}
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                  >
+                    {providers?.find(p => p.name === config.agent_b_provider)?.models.map((m) => (
+                      <option key={m} value={m}>{m}</option>
                     ))}
                   </select>
                 </div>
