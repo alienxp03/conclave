@@ -10,7 +10,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
-	"github.com/alienxp03/dbate/internal/core"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // SQLiteStorage implements Storage using SQLite.
@@ -50,11 +50,12 @@ func (s *SQLiteStorage) Initialize() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS debates (
 		id TEXT PRIMARY KEY,
+		title TEXT NOT NULL DEFAULT 'New conversation',
 		topic TEXT NOT NULL,
+		cwd TEXT NOT NULL DEFAULT '',
 		agent_a_json TEXT NOT NULL,
 		agent_b_json TEXT NOT NULL,
 		style TEXT NOT NULL,
-		mode TEXT NOT NULL DEFAULT 'automatic',
 		max_turns INTEGER NOT NULL,
 		status TEXT NOT NULL DEFAULT 'pending',
 		read_only INTEGER NOT NULL DEFAULT 0,
@@ -98,7 +99,9 @@ func (s *SQLiteStorage) Initialize() error {
 
 	CREATE TABLE IF NOT EXISTS councils (
 		id TEXT PRIMARY KEY,
+		title TEXT NOT NULL DEFAULT 'New conversation',
 		topic TEXT NOT NULL,
+		cwd TEXT NOT NULL DEFAULT '',
 		chairman_json TEXT NOT NULL,
 		status TEXT NOT NULL DEFAULT 'pending',
 		synthesis TEXT,
@@ -168,6 +171,12 @@ func (s *SQLiteStorage) migrate() {
 	s.db.Exec("ALTER TABLE debates ADD COLUMN mode TEXT NOT NULL DEFAULT 'automatic'")
 	// Add read_only column if not exists
 	s.db.Exec("ALTER TABLE debates ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0")
+	// Add cwd column if not exists
+	s.db.Exec("ALTER TABLE debates ADD COLUMN cwd TEXT NOT NULL DEFAULT ''")
+	s.db.Exec("ALTER TABLE councils ADD COLUMN cwd TEXT NOT NULL DEFAULT ''")
+	// Add title column if not exists
+	s.db.Exec("ALTER TABLE debates ADD COLUMN title TEXT NOT NULL DEFAULT 'New conversation'")
+	s.db.Exec("ALTER TABLE councils ADD COLUMN title TEXT NOT NULL DEFAULT 'New conversation'")
 }
 
 // Close closes the database connection.
@@ -197,14 +206,13 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 		conclusionJSON = &str
 	}
 
-	mode := debate.Mode
-	if mode == "" {
-		mode = core.ModeAutomatic
+	if debate.Title == "" {
+		debate.Title = "New conversation"
 	}
 
 	query := `
-	INSERT INTO debates (id, topic, agent_a_json, agent_b_json, style, mode, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO debates (id, title, topic, cwd, agent_a_json, agent_b_json, style, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	readOnly := 0
@@ -214,11 +222,12 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 
 	_, err = s.db.Exec(query,
 		debate.ID,
+		debate.Title,
 		debate.Topic,
+		debate.CWD,
 		string(agentAJSON),
 		string(agentBJSON),
 		debate.Style,
-		mode,
 		debate.MaxTurns,
 		debate.Status,
 		readOnly,
@@ -238,7 +247,7 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 // GetDebate retrieves a debate by ID.
 func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 	query := `
-	SELECT id, topic, agent_a_json, agent_b_json, style, mode, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at
+	SELECT id, title, topic, cwd, agent_a_json, agent_b_json, style, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at
 	FROM debates
 	WHERE id = ?
 	`
@@ -247,16 +256,16 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 	var agentAJSON, agentBJSON string
 	var conclusionJSON sql.NullString
 	var completedAt sql.NullTime
-	var mode sql.NullString
 	var readOnly int
 
 	err := s.db.QueryRow(query, id).Scan(
 		&debate.ID,
+		&debate.Title,
 		&debate.Topic,
+		&debate.CWD,
 		&agentAJSON,
 		&agentBJSON,
 		&debate.Style,
-		&mode,
 		&debate.MaxTurns,
 		&debate.Status,
 		&readOnly,
@@ -293,12 +302,6 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 		debate.CompletedAt = &completedAt.Time
 	}
 
-	if mode.Valid {
-		debate.Mode = core.DebateMode(mode.String)
-	} else {
-		debate.Mode = core.ModeAutomatic
-	}
-
 	debate.ReadOnly = readOnly == 1
 
 	return &debate, nil
@@ -306,6 +309,15 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 
 // UpdateDebate updates an existing debate.
 func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
+	// If title is "New conversation", try to preserve existing title from DB
+	if debate.Title == "New conversation" {
+		var existingTitle string
+		err := s.db.QueryRow("SELECT title FROM debates WHERE id = ?", debate.ID).Scan(&existingTitle)
+		if err == nil && existingTitle != "New conversation" {
+			debate.Title = existingTitle
+		}
+	}
+
 	agentAJSON, err := json.Marshal(debate.AgentA)
 	if err != nil {
 		return fmt.Errorf("failed to marshal agent A: %w", err)
@@ -335,16 +347,17 @@ func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
 
 	query := `
 	UPDATE debates
-	SET topic = ?, agent_a_json = ?, agent_b_json = ?, style = ?, mode = ?, max_turns = ?, status = ?, read_only = ?, conclusion_json = ?, updated_at = ?, completed_at = ?
+	SET title = ?, topic = ?, cwd = ?, agent_a_json = ?, agent_b_json = ?, style = ?, max_turns = ?, status = ?, read_only = ?, conclusion_json = ?, updated_at = ?, completed_at = ?
 	WHERE id = ?
 	`
 
 	_, err = s.db.Exec(query,
+		debate.Title,
 		debate.Topic,
+		debate.CWD,
 		string(agentAJSON),
 		string(agentBJSON),
 		debate.Style,
-		debate.Mode,
 		debate.MaxTurns,
 		debate.Status,
 		readOnly,
@@ -358,6 +371,15 @@ func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
 		return fmt.Errorf("failed to update debate: %w", err)
 	}
 
+	return nil
+}
+
+// UpdateDebateTitle updates only the title of a debate.
+func (s *SQLiteStorage) UpdateDebateTitle(id, title string) error {
+	_, err := s.db.Exec("UPDATE debates SET title = ?, updated_at = ? WHERE id = ?", title, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("failed to update debate title: %w", err)
+	}
 	return nil
 }
 
@@ -382,7 +404,7 @@ func (s *SQLiteStorage) DeleteDebate(id string) error {
 // ListDebates returns a list of debate summaries.
 func (s *SQLiteStorage) ListDebates(limit, offset int) ([]*core.DebateSummary, error) {
 	query := `
-	SELECT d.id, d.topic, d.status, d.style, d.mode, d.read_only, d.agent_a_json, d.agent_b_json, d.created_at,
+	SELECT d.id, d.title, d.topic, d.cwd, d.status, d.style, d.read_only, d.agent_a_json, d.agent_b_json, d.created_at,
 		   (SELECT COUNT(*) FROM turns WHERE debate_id = d.id) as turn_count
 	FROM debates d
 	ORDER BY d.created_at DESC
@@ -399,15 +421,15 @@ func (s *SQLiteStorage) ListDebates(limit, offset int) ([]*core.DebateSummary, e
 	for rows.Next() {
 		var summary core.DebateSummary
 		var agentAJSON, agentBJSON string
-		var mode sql.NullString
 		var readOnly int
 
 		err := rows.Scan(
 			&summary.ID,
+			&summary.Title,
 			&summary.Topic,
+			&summary.CWD,
 			&summary.Status,
 			&summary.Style,
-			&mode,
 			&readOnly,
 			&agentAJSON,
 			&agentBJSON,
@@ -424,12 +446,6 @@ func (s *SQLiteStorage) ListDebates(limit, offset int) ([]*core.DebateSummary, e
 
 		summary.AgentA = fmt.Sprintf("%s:%s", agentA.Provider, agentA.Persona)
 		summary.AgentB = fmt.Sprintf("%s:%s", agentB.Provider, agentB.Persona)
-
-		if mode.Valid {
-			summary.Mode = core.DebateMode(mode.String)
-		} else {
-			summary.Mode = core.ModeAutomatic
-		}
 
 		summary.ReadOnly = readOnly == 1
 
@@ -545,9 +561,9 @@ func (s *SQLiteStorage) GetLatestTurn(debateID string) (*core.Turn, error) {
 func DefaultDBPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "dbate.db"
+		return "conclave.db"
 	}
-	return filepath.Join(home, ".dbate", "dbate.db")
+	return filepath.Join(home, ".conclave", "conclave.db")
 }
 
 // Persona represents a stored persona.
@@ -822,14 +838,18 @@ func (s *SQLiteStorage) ListStyles(includeBuiltin bool) ([]*Style, error) {
 
 // CreateCouncil creates a new council.
 func (s *SQLiteStorage) CreateCouncil(council *core.Council) error {
+	if council.Title == "" {
+		council.Title = "New conversation"
+	}
+
 	chairmanJSON, err := json.Marshal(council.Chairman)
 	if err != nil {
 		return fmt.Errorf("failed to marshal chairman: %w", err)
 	}
 
 	query := `
-	INSERT INTO councils (id, topic, chairman_json, status, synthesis, created_at, updated_at, completed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO councils (id, title, topic, cwd, chairman_json, status, synthesis, created_at, updated_at, completed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	var completedAt *time.Time
@@ -839,7 +859,9 @@ func (s *SQLiteStorage) CreateCouncil(council *core.Council) error {
 
 	_, err = s.db.Exec(query,
 		council.ID,
+		council.Title,
 		council.Topic,
+		council.CWD,
 		string(chairmanJSON),
 		council.Status,
 		council.Synthesis,
@@ -884,7 +906,7 @@ func (s *SQLiteStorage) insertCouncilMember(councilID string, member core.Agent)
 // GetCouncil retrieves a council by ID.
 func (s *SQLiteStorage) GetCouncil(id string) (*core.Council, error) {
 	query := `
-	SELECT id, topic, chairman_json, status, synthesis, created_at, updated_at, completed_at
+	SELECT id, title, topic, cwd, chairman_json, status, synthesis, created_at, updated_at, completed_at
 	FROM councils
 	WHERE id = ?
 	`
@@ -896,7 +918,9 @@ func (s *SQLiteStorage) GetCouncil(id string) (*core.Council, error) {
 
 	err := s.db.QueryRow(query, id).Scan(
 		&council.ID,
+		&council.Title,
 		&council.Topic,
+		&council.CWD,
 		&chairmanJSON,
 		&council.Status,
 		&synthesis,
@@ -970,6 +994,15 @@ func (s *SQLiteStorage) getCouncilMembers(councilID string) ([]core.Agent, error
 
 // UpdateCouncil updates an existing council.
 func (s *SQLiteStorage) UpdateCouncil(council *core.Council) error {
+	// If title is "New conversation", try to preserve existing title from DB
+	if council.Title == "New conversation" {
+		var existingTitle string
+		err := s.db.QueryRow("SELECT title FROM councils WHERE id = ?", council.ID).Scan(&existingTitle)
+		if err == nil && existingTitle != "New conversation" {
+			council.Title = existingTitle
+		}
+	}
+
 	chairmanJSON, err := json.Marshal(council.Chairman)
 	if err != nil {
 		return fmt.Errorf("failed to marshal chairman: %w", err)
@@ -977,7 +1010,7 @@ func (s *SQLiteStorage) UpdateCouncil(council *core.Council) error {
 
 	query := `
 	UPDATE councils
-	SET topic = ?, chairman_json = ?, status = ?, synthesis = ?, updated_at = ?, completed_at = ?
+	SET title = ?, topic = ?, cwd = ?, chairman_json = ?, status = ?, synthesis = ?, updated_at = ?, completed_at = ?
 	WHERE id = ?
 	`
 
@@ -987,7 +1020,9 @@ func (s *SQLiteStorage) UpdateCouncil(council *core.Council) error {
 	}
 
 	_, err = s.db.Exec(query,
+		council.Title,
 		council.Topic,
+		council.CWD,
 		string(chairmanJSON),
 		council.Status,
 		council.Synthesis,
@@ -1000,6 +1035,15 @@ func (s *SQLiteStorage) UpdateCouncil(council *core.Council) error {
 		return fmt.Errorf("failed to update council: %w", err)
 	}
 
+	return nil
+}
+
+// UpdateCouncilTitle updates only the title of a council.
+func (s *SQLiteStorage) UpdateCouncilTitle(id, title string) error {
+	_, err := s.db.Exec("UPDATE councils SET title = ?, updated_at = ? WHERE id = ?", title, time.Now(), id)
+	if err != nil {
+		return fmt.Errorf("failed to update council title: %w", err)
+	}
 	return nil
 }
 
@@ -1017,7 +1061,9 @@ func (s *SQLiteStorage) ListCouncils(limit, offset int) ([]*core.CouncilSummary,
 	query := `
 	SELECT
 		c.id,
+		c.title,
 		c.topic,
+		c.cwd,
 		c.status,
 		c.created_at,
 		COUNT(cm.id) as member_count
@@ -1039,7 +1085,9 @@ func (s *SQLiteStorage) ListCouncils(limit, offset int) ([]*core.CouncilSummary,
 		var summary core.CouncilSummary
 		err := rows.Scan(
 			&summary.ID,
+			&summary.Title,
 			&summary.Topic,
+			&summary.CWD,
 			&summary.Status,
 			&summary.CreatedAt,
 			&summary.MemberCount,

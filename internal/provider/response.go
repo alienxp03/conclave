@@ -165,6 +165,19 @@ func ParseGeminiJSON(data string) (*Response, error) {
 // CodexJSONResponse represents OpenAI/Codex CLI structured output.
 type CodexJSONResponse struct {
 	Response string `json:"response,omitempty"`
+	// OpenAI compatible fields
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+		FinishReason string `json:"finish_reason"`
+	} `json:"choices,omitempty"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage,omitempty"`
+	Content string `json:"content,omitempty"` // Fallback for simple content field
 }
 
 // ParseCodexJSON parses OpenAI/Codex CLI structured JSON output.
@@ -179,14 +192,35 @@ func ParseCodexJSON(data string) (*Response, error) {
 	}
 
 	resp := &Response{
-		Content: raw.Response,
-		Raw:     data,
+		Raw: data,
+	}
+
+	// Extract content
+	if raw.Response != "" {
+		resp.Content = raw.Response
+	} else if len(raw.Choices) > 0 {
+		resp.Content = raw.Choices[0].Message.Content
+		resp.Metadata = &ResponseMeta{
+			StopReason: raw.Choices[0].FinishReason,
+		}
+	} else if raw.Content != "" {
+		resp.Content = raw.Content
+	}
+
+	// Extract metadata
+	if raw.Usage != nil {
+		if resp.Metadata == nil {
+			resp.Metadata = &ResponseMeta{}
+		}
+		resp.Metadata.InputTokens = raw.Usage.PromptTokens
+		resp.Metadata.OutputTokens = raw.Usage.CompletionTokens
+		resp.Metadata.TotalTokens = raw.Usage.TotalTokens
 	}
 
 	return resp, nil
 }
 
-// QwenJSONResponse represents Qwen CLI JSON output.
+// QwenJSONResponse represents legacy Qwen CLI JSON output.
 type QwenJSONResponse struct {
 	Output struct {
 		Text         string `json:"text"`
@@ -200,8 +234,78 @@ type QwenJSONResponse struct {
 	Text string `json:"text,omitempty"` // For simpler responses
 }
 
+// QwenEvent represents an event in the newer Qwen CLI JSON array output.
+type QwenEvent struct {
+	Type    string `json:"type"`
+	Result  string `json:"result,omitempty"`
+	Message *struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	} `json:"message,omitempty"`
+	Usage *struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	} `json:"usage,omitempty"`
+}
+
 // ParseQwenJSON parses Qwen CLI JSON output.
 func ParseQwenJSON(data string) (*Response, error) {
+	// Try parsing as array of events first (newer format)
+	var events []QwenEvent
+	if err := json.Unmarshal([]byte(data), &events); err == nil && len(events) > 0 {
+		resp := &Response{Raw: data}
+		
+		var resultText string
+		var assistantText string
+		var usage *ResponseMeta
+
+		// Scan all events to collect information
+		for _, event := range events {
+			if event.Type == "result" && event.Result != "" {
+				resultText = event.Result
+				if event.Usage != nil {
+					usage = &ResponseMeta{
+						InputTokens:  event.Usage.InputTokens,
+						OutputTokens: event.Usage.OutputTokens,
+						TotalTokens:  event.Usage.TotalTokens,
+					}
+				}
+			}
+			
+			if event.Type == "assistant" && event.Message != nil {
+				for _, c := range event.Message.Content {
+					if c.Type == "text" {
+						assistantText += c.Text
+					}
+				}
+				if usage == nil && event.Usage != nil {
+					usage = &ResponseMeta{
+						InputTokens:  event.Usage.InputTokens,
+						OutputTokens: event.Usage.OutputTokens,
+						TotalTokens:  event.Usage.TotalTokens,
+					}
+				}
+			}
+		}
+		
+		// Prioritize resultText, then assistantText
+		if resultText != "" {
+			resp.Content = resultText
+		} else {
+			resp.Content = assistantText
+		}
+		
+		resp.Metadata = usage
+		
+		if resp.Content != "" {
+			return resp, nil
+		}
+	}
+
+	// Fallback to legacy object format
 	var raw QwenJSONResponse
 	if err := json.Unmarshal([]byte(data), &raw); err != nil {
 		return &Response{

@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/alienxp03/dbate/internal/config"
+	"github.com/alienxp03/conclave/internal/config"
 )
 
 // GenericProvider is a configurable provider for custom CLI tools.

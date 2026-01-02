@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/config"
+	"github.com/alienxp03/conclave/internal/config"
 )
 
 // MockProvider is a provider that generates simulated responses for testing.

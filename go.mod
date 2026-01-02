@@ -1,9 +1,8 @@
-module github.com/alienxp03/dbate
+module github.com/alienxp03/conclave
 
 go 1.25.0
 
 require (
-	github.com/google/uuid v1.6.0
 	github.com/jung-kurt/gofpdf v1.16.2
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/spf13/cobra v1.10.2

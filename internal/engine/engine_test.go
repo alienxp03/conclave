@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/core"
-	"github.com/alienxp03/dbate/internal/provider"
-	"github.com/alienxp03/dbate/internal/storage"
+	"github.com/alienxp03/conclave/internal/core"
+	"github.com/alienxp03/conclave/internal/provider"
+	"github.com/alienxp03/conclave/internal/storage"
 )
 
 // MockProvider for testing
@@ -36,7 +36,7 @@ func (m *MockProvider) DefaultModel() string   { return "test-model" }
 func (m *MockProvider) Timeout() time.Duration { return 2 * time.Minute }
 
 func setupTestEngine(t *testing.T) (*Engine, func()) {
-	tmpDir, err := os.MkdirTemp("", "dbate-engine-test-*")
+	tmpDir, err := os.MkdirTemp("", "conclave-engine-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}

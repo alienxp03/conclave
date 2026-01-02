@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/config"
+	"github.com/alienxp03/conclave/internal/config"
 )
 
 // Provider defines the interface for AI providers.

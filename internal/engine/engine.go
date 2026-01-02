@@ -5,18 +5,18 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
+	"os"
 	"strings"
 	"text/template"
 	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/alienxp03/dbate/internal/core"
-	"github.com/alienxp03/dbate/internal/persona"
-	"github.com/alienxp03/dbate/internal/provider"
-	"github.com/alienxp03/dbate/internal/storage"
-	"github.com/alienxp03/dbate/internal/style"
+	"github.com/alienxp03/conclave/internal/core"
+	"github.com/alienxp03/conclave/internal/persona"
+	"github.com/alienxp03/conclave/internal/provider"
+	"github.com/alienxp03/conclave/internal/storage"
+	"github.com/alienxp03/conclave/internal/style"
 )
 
 // Engine orchestrates debate sessions.
@@ -35,6 +35,7 @@ func New(store storage.Storage, registry *provider.Registry) *Engine {
 
 // CreateDebate creates a new debate session.
 func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) (*core.Debate, error) {
+	slog.Debug("Creating new debate", "topic", config.Topic, "agent_a", config.AgentAProvider, "agent_b", config.AgentBProvider)
 	// Validate providers
 	if config.AgentAProvider == "" {
 		return nil, fmt.Errorf("agent A provider is required")
@@ -74,38 +75,43 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 		return nil, fmt.Errorf("invalid debate style: %s", config.Style)
 	}
 
+	// Assign default models if empty
+	agentAModel := config.AgentAModel
+	if agentAModel == "" {
+		agentAModel = core.DefaultModelForProvider[config.AgentAProvider]
+	}
+	agentBModel := config.AgentBModel
+	if agentBModel == "" {
+		agentBModel = core.DefaultModelForProvider[config.AgentBProvider]
+	}
+
 	// Set defaults
 	maxTurns := config.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = 5
 	}
 
-	// Set default mode
-	mode := config.Mode
-	if mode == "" {
-		mode = core.ModeAutomatic
-	}
-
 	now := time.Now()
+	cwd, _ := os.Getwd()
 	debate := &core.Debate{
-		ID:    uuid.New().String(),
+		ID:    core.GenerateID(),
 		Topic: config.Topic,
+		CWD:   cwd,
 		AgentA: core.Agent{
-			ID:       uuid.New().String(),
+			ID:       core.GenerateID(),
 			Name:     fmt.Sprintf("Agent A (%s)", personaADef.Name),
 			Provider: config.AgentAProvider,
-			Model:    config.AgentAModel,
+			Model:    agentAModel,
 			Persona:  config.AgentAPersona,
 		},
 		AgentB: core.Agent{
-			ID:       uuid.New().String(),
+			ID:       core.GenerateID(),
 			Name:     fmt.Sprintf("Agent B (%s)", personaBDef.Name),
 			Provider: config.AgentBProvider,
-			Model:    config.AgentBModel,
+			Model:    agentBModel,
 			Persona:  config.AgentBPersona,
 		},
 		Style:     config.Style,
-		Mode:      mode,
 		MaxTurns:  maxTurns,
 		Status:    core.StatusPending,
 		CreatedAt: now,
@@ -116,7 +122,55 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 		return nil, fmt.Errorf("failed to create debate: %w", err)
 	}
 
+	// Summarize topic in background
+	go e.AutoSummarize(debate.ID, config.Topic, config.AgentAProvider)
+
 	return debate, nil
+}
+
+// AutoSummarize generates a summary title and updates the debate.
+func (e *Engine) AutoSummarize(id, topic, providerName string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	title, err := e.SummarizeTopic(ctx, topic, providerName)
+	if err != nil {
+		slog.Error("Failed to auto-summarize topic", "id", id, "error", err)
+		return
+	}
+
+	if err := e.storage.UpdateDebateTitle(id, title); err != nil {
+		slog.Error("Failed to update debate title", "id", id, "error", err)
+	}
+}
+
+// SummarizeTopic generates a 3-4 word title from a topic.
+func (e *Engine) SummarizeTopic(ctx context.Context, topic string, providerName string) (string, error) {
+	prov, err := e.registry.Get(providerName)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := fmt.Sprintf(`Summarize the following question or topic as a 3-4 word title. 
+Topic: "%s"
+
+Respond with ONLY the title. No punctuation.`, topic)
+
+	var response string
+	response, err = prov.Generate(ctx, prompt)
+	if err != nil {
+		return "", err
+	}
+
+	title := strings.TrimSpace(response)
+	title = strings.Trim(title, `"'`)
+	// Ensure it's not too long
+	words := strings.Fields(title)
+	if len(words) > 5 {
+		title = strings.Join(words[:5], " ")
+	}
+
+	return title, nil
 }
 
 // getPersona retrieves a persona by ID from builtins or storage.
@@ -404,7 +458,7 @@ func (e *Engine) executeTurn(ctx context.Context, debate *core.Debate, agent cor
 
 	// Create turn
 	turn := &core.Turn{
-		ID:        uuid.New().String(),
+		ID:        core.GenerateID(),
 		DebateID:  debate.ID,
 		AgentID:   agent.ID,
 		Number:    turnNum,
@@ -416,6 +470,13 @@ func (e *Engine) executeTurn(ctx context.Context, debate *core.Debate, agent cor
 		return nil, fmt.Errorf("failed to save turn: %w", err)
 	}
 
+	// Check for consensus or max turns
+	if err := e.checkConclusion(ctx, debate, turns); err != nil {
+		// Log error but don't fail the turn
+		slog.Error("Failed to check conclusion", "error", err)
+	}
+
+	slog.Debug("Turn execution completed", "turn_id", turn.ID, "agent", turn.AgentID)
 	return turn, nil
 }
 
@@ -490,7 +551,9 @@ func (e *Engine) buildPrompt(debate *core.Debate, agent core.Agent, turns []*cor
 	// Combine persona and style prompt
 	fullPrompt := fmt.Sprintf(`%s
 
-%s`, personaDef.SystemPrompt, buf.String())
+%s
+
+Use Markdown format.`, personaDef.SystemPrompt, buf.String())
 
 	return fullPrompt, nil
 }
@@ -634,7 +697,9 @@ Debate history:
 
 Voting results: %s
 
-Provide a brief, objective summary (2-3 sentences) of the key points discussed and the outcome.`, debate.Topic, history, consensusStatus)
+Provide a brief, objective summary (2-3 sentences) of the key points discussed and the outcome.
+
+Use Markdown format.`, debate.Topic, history, consensusStatus)
 
 	var response string
 	if debate.AgentA.Model != "" {
@@ -651,6 +716,7 @@ Provide a brief, objective summary (2-3 sentences) of the key points discussed a
 
 // ExecuteNextTurn executes just the next turn (for step-by-step execution).
 func (e *Engine) ExecuteNextTurn(ctx context.Context, debateID string) (*core.Turn, error) {
+	slog.Debug("Executing next turn", "debate_id", debateID)
 	debate, err := e.storage.GetDebate(debateID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get debate: %w", err)
@@ -709,6 +775,31 @@ func (e *Engine) ExecuteNextTurn(ctx context.Context, debateID string) (*core.Tu
 	}
 
 	return turn, nil
+}
+
+// checkConclusion checks if the debate should conclude early.
+func (e *Engine) checkConclusion(ctx context.Context, debate *core.Debate, turns []*core.Turn) error {
+	// Only check if we have enough turns
+	if len(turns) < 4 {
+		return nil
+	}
+
+	// Check for early consensus
+	if e.checkEarlyConsensus(ctx, debate) {
+		conclusion, err := e.generateConclusion(ctx, debate)
+		if err != nil {
+			return err
+		}
+		conclusion.EarlyConsensus = true
+		debate.Conclusion = conclusion
+
+		now := time.Now()
+		debate.Status = core.StatusCompleted
+		debate.CompletedAt = &now
+		return e.storage.UpdateDebate(debate)
+	}
+
+	return nil
 }
 
 // hashString creates a simple hash from a string.

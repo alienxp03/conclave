@@ -4,7 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/config"
+	"github.com/alienxp03/conclave/internal/config"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // GeminiProvider implements the Provider interface for Gemini CLI.
@@ -16,10 +17,10 @@ type GeminiProvider struct {
 // NewGeminiProvider creates a new Gemini provider with defaults.
 func NewGeminiProvider() *GeminiProvider {
 	return NewGeminiProviderWithConfig(config.ProviderConfig{
-		Command:      "gemini",
-		Args:         []string{},
-		DefaultModel: "",
-		Models:       []string{"pro", "flash", "ultra"},
+		Command:      core.DefaultCommandForProvider["gemini"],
+		Args:         core.DefaultArgsForProvider["gemini"],
+		DefaultModel: core.DefaultModelForProvider["gemini"],
+		Models:       core.DefaultModelsForProvider["gemini"],
 		Timeout:      0,
 		Enabled:      true,
 	})

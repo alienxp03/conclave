@@ -4,7 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/config"
+	"github.com/alienxp03/conclave/internal/config"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // ClaudeProvider implements the Provider interface for Claude CLI.
@@ -16,10 +17,10 @@ type ClaudeProvider struct {
 // NewClaudeProvider creates a new Claude provider with defaults.
 func NewClaudeProvider() *ClaudeProvider {
 	return NewClaudeProviderWithConfig(config.ProviderConfig{
-		Command:      "claude",
-		Args:         []string{"--print"},
-		DefaultModel: "",
-		Models:       []string{"opus", "sonnet", "haiku"},
+		Command:      core.DefaultCommandForProvider["claude"],
+		Args:         core.DefaultArgsForProvider["claude"],
+		DefaultModel: core.DefaultModelForProvider["claude"],
+		Models:       core.DefaultModelsForProvider["claude"],
 		Timeout:      0, // Uses default
 		Enabled:      true,
 	})

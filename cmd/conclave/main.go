@@ -13,16 +13,16 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/alienxp03/dbate/internal/config"
-	"github.com/alienxp03/dbate/internal/core"
-	"github.com/alienxp03/dbate/internal/council"
-	"github.com/alienxp03/dbate/internal/engine"
-	"github.com/alienxp03/dbate/internal/export"
-	"github.com/alienxp03/dbate/internal/persona"
-	"github.com/alienxp03/dbate/internal/provider"
-	"github.com/alienxp03/dbate/internal/storage"
-	"github.com/alienxp03/dbate/internal/style"
-	"github.com/alienxp03/dbate/web/handlers"
+	"github.com/alienxp03/conclave/internal/config"
+	"github.com/alienxp03/conclave/internal/core"
+	"github.com/alienxp03/conclave/internal/council"
+	"github.com/alienxp03/conclave/internal/engine"
+	"github.com/alienxp03/conclave/internal/export"
+	"github.com/alienxp03/conclave/internal/persona"
+	"github.com/alienxp03/conclave/internal/provider"
+	"github.com/alienxp03/conclave/internal/storage"
+	"github.com/alienxp03/conclave/internal/style"
+	"github.com/alienxp03/conclave/web/handlers"
 )
 
 var (
@@ -39,9 +39,9 @@ func main() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "dbate",
+	Use:   "conclave",
 	Short: "AI-powered debate tool",
-	Long: `dbate is a CLI tool that orchestrates debates between AI agents.
+	Long: `conclave is a CLI tool that orchestrates debates between AI agents.
 
 Create debates on any topic and watch AI agents with different personas
 argue, collaborate, or analyze from multiple perspectives.`,
@@ -61,8 +61,8 @@ argue, collaborate, or analyze from multiple perspectives.`,
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.dbate/dbate.db)")
-	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.dbate/config.yaml)")
+	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.conclave/conclave.db)")
+	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.conclave/config.yaml)")
 
 	rootCmd.AddCommand(newCmd)
 	rootCmd.AddCommand(listCmd)
@@ -112,15 +112,15 @@ var newCmd = &cobra.Command{
 	Long: `Create and run a new debate or council on the given topic.
 
 2-Agent Debate Examples:
-  dbate new "Is AI beneficial for humanity?"
-  dbate new "Best programming language" --style adversarial
-  dbate new "Climate change" -a claude:optimist -b gemini:skeptic
-  dbate new "Tech trends" -a claude/sonnet:analyst -b qwen:visionary --step
+  conclave new "Is AI beneficial for humanity?"
+  conclave new "Best programming language" --style adversarial
+  conclave new "Climate change" -a claude:optimist -b gemini:skeptic
+  conclave new "Tech trends" -a claude/sonnet:analyst -b qwen:visionary
 
 N-Agent Council Examples (use --models):
-  dbate new "Should we adopt GraphQL?" --models claude,gemini
-  dbate new "API design" --models claude:optimist,gemini:skeptic,qwen:pragmatist
-  dbate new "Tech decision" --models claude/opus,gemini/pro --chairman claude/opus`,
+  conclave new "Should we adopt GraphQL?" --models claude,gemini
+  conclave new "API design" --models claude:optimist,gemini:skeptic,qwen:pragmatist
+  conclave new "Tech decision" --models claude/opus,gemini/pro --chairman claude/opus`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runNewDebate,
 }
@@ -130,7 +130,6 @@ var (
 	agentBFlag   string
 	styleFlag    string
 	turnsFlag    int
-	stepModeFlag bool
 	modelsFlag   string
 	chairmanFlag string
 )
@@ -141,7 +140,6 @@ func init() {
 	newCmd.Flags().StringVarP(&agentBFlag, "agent-b", "b", "claude:skeptic", "Agent B (provider[/model]:persona)")
 	newCmd.Flags().StringVarP(&styleFlag, "style", "s", "collaborative", "Debate style")
 	newCmd.Flags().IntVarP(&turnsFlag, "turns", "t", 5, "Turns per agent")
-	newCmd.Flags().BoolVar(&stepModeFlag, "step", false, "Step-by-step mode (execute one turn at a time)")
 
 	// N-agent council flags
 	newCmd.Flags().StringVarP(&modelsFlag, "models", "m", "", "Council members (comma-separated: provider[/model][:persona],...)")
@@ -326,12 +324,6 @@ func runNewTwoAgentDebate(cmd *cobra.Command, topic string) error {
 		return err
 	}
 
-	// Set mode
-	mode := core.ModeAutomatic
-	if stepModeFlag {
-		mode = core.ModeTurnByTurn
-	}
-
 	// Create debate
 	debateConfig := core.NewDebateConfig{
 		Topic:          topic,
@@ -342,7 +334,6 @@ func runNewTwoAgentDebate(cmd *cobra.Command, topic string) error {
 		AgentBModel:    modelB,
 		AgentBPersona:  personaB,
 		Style:          styleFlag,
-		Mode:           mode,
 		MaxTurns:       turnsFlag,
 	}
 
@@ -351,8 +342,8 @@ func runNewTwoAgentDebate(cmd *cobra.Command, topic string) error {
 		return fmt.Errorf("failed to create debate: %w", err)
 	}
 
-	fmt.Printf("\n🎭 Debate: %s\n", debate.Topic)
-	fmt.Printf("   Style: %s | Turns: %d per agent | Mode: %s\n", debate.Style, debate.MaxTurns, debate.Mode)
+	fmt.Printf("\n💬 Debate: %s\n", debate.Topic)
+	fmt.Printf("   Style: %s | Turns: %d per agent\n", debate.Style, debate.MaxTurns)
 	fmt.Printf("   Agent A: %s (%s", debate.AgentA.Name, debate.AgentA.Provider)
 	if debate.AgentA.Model != "" {
 		fmt.Printf("/%s", debate.AgentA.Model)
@@ -366,16 +357,11 @@ func runNewTwoAgentDebate(cmd *cobra.Command, topic string) error {
 	fmt.Printf("   ID: %s\n\n", debate.ID)
 	fmt.Println(strings.Repeat("─", 60))
 
-	// Step mode - let user control
-	if stepModeFlag {
-		return runStepMode(cmd.Context(), eng, debate)
-	}
-
-	// Auto mode - run full debate
-	return runAutoMode(cmd.Context(), eng, debate)
+	// Run full debate
+	return runDebate(cmd.Context(), eng, debate)
 }
 
-func runAutoMode(ctx context.Context, eng *engine.Engine, debate *core.Debate) error {
+func runDebate(ctx context.Context, eng *engine.Engine, debate *core.Debate) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -397,49 +383,10 @@ func runAutoMode(ctx context.Context, eng *engine.Engine, debate *core.Debate) e
 
 	if err != nil {
 		if ctx.Err() != nil {
-			fmt.Println("\nDebate paused. Resume with: dbate show " + debate.ID[:8])
+			fmt.Println("\nDebate paused. Resume with: conclave show " + debate.ID[:8])
 			return nil
 		}
 		return fmt.Errorf("debate failed: %w", err)
-	}
-
-	return showConclusion(eng, debate.ID)
-}
-
-func runStepMode(ctx context.Context, eng *engine.Engine, debate *core.Debate) error {
-	fmt.Println("\n📋 Step-by-step mode. Commands:")
-	fmt.Println("   [Enter] - Execute next turn")
-	fmt.Println("   [q]     - Quit and save")
-	fmt.Println()
-
-	totalTurns := debate.MaxTurns * 2
-	currentTurn := 0
-
-	for currentTurn < totalTurns {
-		fmt.Printf("Turn %d/%d - Press Enter to continue (q to quit): ", currentTurn+1, totalTurns)
-
-		var input string
-		fmt.Scanln(&input)
-
-		if strings.ToLower(strings.TrimSpace(input)) == "q" {
-			fmt.Println("\nDebate paused. Resume with: dbate show " + debate.ID[:8])
-			return nil
-		}
-
-		turn, err := eng.ExecuteNextTurn(ctx, debate.ID)
-		if err != nil {
-			return fmt.Errorf("failed to execute turn: %w", err)
-		}
-
-		debate, _, _ = eng.GetDebateWithTurns(debate.ID)
-		agentName := getAgentName(debate, turn.AgentID)
-
-		fmt.Printf("\n📢 Turn %d - %s\n", turn.Number, agentName)
-		fmt.Println(strings.Repeat("─", 40))
-		fmt.Println(turn.Content)
-		fmt.Println()
-
-		currentTurn++
 	}
 
 	return showConclusion(eng, debate.ID)
@@ -526,13 +473,13 @@ var listCmd = &cobra.Command{
 		}
 
 		if len(debates) == 0 {
-			fmt.Println("No debates found. Start one with: dbate new \"Your topic\"")
+			fmt.Println("No debates found. Start one with: conclave new \"Your topic\"")
 			return nil
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "ID\tTOPIC\tSTATUS\tMODE\tTURNS\tLOCK\tCREATED")
-		fmt.Fprintln(w, "──\t─────\t──────\t────\t─────\t────\t───────")
+		fmt.Fprintln(w, "ID\tTOPIC\tSTATUS\tTURNS\tLOCK\tCREATED")
+		fmt.Fprintln(w, "──\t─────\t──────\t─────\t────\t───────")
 
 		for _, d := range debates {
 			shortID := d.ID[:8]
@@ -544,11 +491,10 @@ var listCmd = &cobra.Command{
 			if d.ReadOnly {
 				lock = "🔒"
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\t%s\n",
+			fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n",
 				shortID,
 				shortTopic,
 				d.Status,
-				d.Mode,
 				d.TurnCount,
 				lock,
 				d.CreatedAt.Format("2006-01-02 15:04"),
@@ -586,10 +532,10 @@ var showCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Printf("\n🎭 Debate: %s\n", debate.Topic)
+		fmt.Printf("\n💬 Debate: %s\n", debate.Topic)
 		fmt.Printf("   ID: %s\n", debate.ID)
 		fmt.Printf("   Status: %s\n", debate.Status)
-		fmt.Printf("   Style: %s | Mode: %s\n", debate.Style, debate.Mode)
+		fmt.Printf("   Style: %s\n", debate.Style)
 		if debate.ReadOnly {
 			fmt.Println("   🔒 Read-only")
 		}
@@ -656,9 +602,9 @@ var exportCmd = &cobra.Command{
 	Long: `Export a debate to markdown, PDF, or JSON.
 
 Examples:
-  dbate export abc123 markdown
-  dbate export abc123 pdf
-  dbate export abc123 json -o debate.json`,
+  conclave export abc123 markdown
+  conclave export abc123 pdf
+  conclave export abc123 json -o debate.json`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		store, err := getStorage()
@@ -789,8 +735,8 @@ var providersCmd = &cobra.Command{
 // ============================================================================
 
 var personasCmd = &cobra.Command{
-	Use:   "persona",
-	Short: "Manage agent personas",
+	Use:     "persona",
+	Short:   "Manage agent personas",
 	Aliases: []string{"personas"},
 }
 
@@ -1019,8 +965,8 @@ func init() {
 // ============================================================================
 
 var stylesCmd = &cobra.Command{
-	Use:   "style",
-	Short: "Manage debate styles",
+	Use:     "style",
+	Short:   "Manage debate styles",
 	Aliases: []string{"styles"},
 }
 
@@ -1359,7 +1305,7 @@ var serveCmd = &cobra.Command{
 
 		registry := getRegistry()
 
-		fmt.Printf("\n🌐 Starting dbate web server on http://localhost:%d\n\n", servePort)
+		fmt.Printf("\n🌐 Starting conclave web server on http://localhost:%d\n\n", servePort)
 		fmt.Println("Available endpoints:")
 		fmt.Printf("  GET  http://localhost:%d/debates     - List all debates\n", servePort)
 		fmt.Printf("  GET  http://localhost:%d/new         - Create new debate form\n", servePort)

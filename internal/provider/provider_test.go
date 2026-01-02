@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// MockProvider is a test provider
-type MockProvider struct {
+// TestProvider is a test provider
+type TestProvider struct {
 	name        string
 	displayName string
 	available   bool
@@ -15,27 +15,27 @@ type MockProvider struct {
 	err         error
 }
 
-func (m *MockProvider) Name() string        { return m.name }
-func (m *MockProvider) DisplayName() string { return m.displayName }
-func (m *MockProvider) Available() bool     { return m.available }
-func (m *MockProvider) Generate(ctx context.Context, prompt string) (string, error) {
+func (m *TestProvider) Name() string        { return m.name }
+func (m *TestProvider) DisplayName() string { return m.displayName }
+func (m *TestProvider) Available() bool     { return m.available }
+func (m *TestProvider) Generate(ctx context.Context, prompt string) (string, error) {
 	if m.err != nil {
 		return "", m.err
 	}
 	return m.response, nil
 }
-func (m *MockProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+func (m *TestProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
 	return m.Generate(ctx, prompt)
 }
-func (m *MockProvider) Models() []string       { return []string{"test-model"} }
-func (m *MockProvider) DefaultModel() string   { return "test-model" }
-func (m *MockProvider) Timeout() time.Duration { return 2 * time.Minute }
+func (m *TestProvider) Models() []string       { return []string{"test-model"} }
+func (m *TestProvider) DefaultModel() string   { return "test-model" }
+func (m *TestProvider) Timeout() time.Duration { return 2 * time.Minute }
 
 func TestRegistry(t *testing.T) {
 	t.Run("RegisterAndGet", func(t *testing.T) {
 		r := NewRegistry()
 
-		mock := &MockProvider{
+		mock := &TestProvider{
 			name:        "mock",
 			displayName: "Mock Provider",
 			available:   true,
@@ -64,8 +64,8 @@ func TestRegistry(t *testing.T) {
 
 	t.Run("List", func(t *testing.T) {
 		r := NewRegistry()
-		r.Register(&MockProvider{name: "a", available: true})
-		r.Register(&MockProvider{name: "b", available: false})
+		r.Register(&TestProvider{name: "a", available: true})
+		r.Register(&TestProvider{name: "b", available: false})
 
 		list := r.List()
 		if len(list) != 2 {
@@ -75,9 +75,9 @@ func TestRegistry(t *testing.T) {
 
 	t.Run("Available", func(t *testing.T) {
 		r := NewRegistry()
-		r.Register(&MockProvider{name: "a", available: true})
-		r.Register(&MockProvider{name: "b", available: false})
-		r.Register(&MockProvider{name: "c", available: true})
+		r.Register(&TestProvider{name: "a", available: true})
+		r.Register(&TestProvider{name: "b", available: false})
+		r.Register(&TestProvider{name: "c", available: true})
 
 		available := r.Available()
 		if len(available) != 2 {
@@ -89,14 +89,14 @@ func TestRegistry(t *testing.T) {
 func TestDefaultRegistry(t *testing.T) {
 	r := DefaultRegistry()
 
-	// Should have all 4 providers registered
+	// Should have all 5 providers registered (claude, codex, gemini, qwen, mock)
 	providers := r.List()
-	if len(providers) != 4 {
-		t.Errorf("wrong count: got %d, want 4", len(providers))
+	if len(providers) != 5 {
+		t.Errorf("wrong count: got %d, want 5", len(providers))
 	}
 
 	// Check each provider exists
-	for _, name := range []string{"claude", "codex", "gemini", "qwen"} {
+	for _, name := range []string{"claude", "codex", "gemini", "qwen", "mock"} {
 		_, err := r.Get(name)
 		if err != nil {
 			t.Errorf("provider %s not found", name)

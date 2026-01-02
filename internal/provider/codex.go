@@ -5,7 +5,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/config"
+	"github.com/alienxp03/conclave/internal/config"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // CodexResponseSchema is the JSON schema for Codex structured output
@@ -27,10 +28,10 @@ type CodexProvider struct {
 // NewCodexProvider creates a new Codex provider with defaults.
 func NewCodexProvider() *CodexProvider {
 	return NewCodexProviderWithConfig(config.ProviderConfig{
-		Command:      "codex",
-		Args:         []string{},
-		DefaultModel: "",
-		Models:       []string{"gpt-4", "gpt-4o", "gpt-3.5-turbo"},
+		Command:      core.DefaultCommandForProvider["codex"],
+		Args:         core.DefaultArgsForProvider["codex"],
+		DefaultModel: core.DefaultModelForProvider["codex"],
+		Models:       core.DefaultModelsForProvider["codex"],
 		Timeout:      0,
 		Enabled:      true,
 	})

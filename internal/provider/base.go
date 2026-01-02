@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/config"
+	"github.com/alienxp03/conclave/internal/config"
 )
 
 const (

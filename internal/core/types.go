@@ -1,4 +1,4 @@
-// Package core contains the core domain types for dbate.
+// Package core contains the core domain types for conclave.
 package core
 
 import (
@@ -15,25 +15,18 @@ const (
 	StatusFailed     DebateStatus = "failed"
 )
 
-// DebateMode represents how the debate is executed.
-type DebateMode string
-
-const (
-	ModeAutomatic  DebateMode = "automatic"   // Run all turns automatically
-	ModeTurnByTurn DebateMode = "turn_by_turn" // Execute one turn at a time
-)
-
 // Debate represents a debate session between two AI agents.
 type Debate struct {
 	ID          string       `json:"id"`
+	Title       string       `json:"title"`
 	Topic       string       `json:"topic"`
+	CWD         string       `json:"cwd"`
 	AgentA      Agent        `json:"agent_a"`
 	AgentB      Agent        `json:"agent_b"`
 	Style       string       `json:"style"`
-	Mode        DebateMode   `json:"mode"`
-	MaxTurns    int          `json:"max_turns"`    // Turns per agent (total = MaxTurns * 2)
+	MaxTurns    int          `json:"max_turns"` // Turns per agent (total = MaxTurns * 2)
 	Status      DebateStatus `json:"status"`
-	ReadOnly    bool         `json:"read_only"`    // If true, debate cannot be modified or deleted
+	ReadOnly    bool         `json:"read_only"` // If true, debate cannot be modified or deleted
 	Conclusion  *Conclusion  `json:"conclusion,omitempty"`
 	CreatedAt   time.Time    `json:"created_at"`
 	UpdatedAt   time.Time    `json:"updated_at"`
@@ -62,8 +55,8 @@ type Turn struct {
 // Vote represents an agent's vote on the conclusion.
 type Vote struct {
 	AgentID   string `json:"agent_id"`
-	Agrees    bool   `json:"agrees"`     // Does the agent agree with the proposed conclusion?
-	Reasoning string `json:"reasoning"`  // Why they voted this way
+	Agrees    bool   `json:"agrees"`    // Does the agent agree with the proposed conclusion?
+	Reasoning string `json:"reasoning"` // Why they voted this way
 }
 
 // Conclusion represents the outcome of a debate.
@@ -73,17 +66,18 @@ type Conclusion struct {
 	AgentASummary  string `json:"agent_a_summary,omitempty"`
 	AgentBSummary  string `json:"agent_b_summary,omitempty"`
 	EarlyConsensus bool   `json:"early_consensus,omitempty"` // True if debate ended early due to consensus
-	AgentAVote    *Vote  `json:"agent_a_vote,omitempty"`
-	AgentBVote    *Vote  `json:"agent_b_vote,omitempty"`
+	AgentAVote     *Vote  `json:"agent_a_vote,omitempty"`
+	AgentBVote     *Vote  `json:"agent_b_vote,omitempty"`
 }
 
 // DebateSummary is a lightweight representation for listing debates.
 type DebateSummary struct {
 	ID        string       `json:"id"`
+	Title     string       `json:"title"`
 	Topic     string       `json:"topic"`
+	CWD       string       `json:"cwd"`
 	Status    DebateStatus `json:"status"`
 	Style     string       `json:"style"`
-	Mode      DebateMode   `json:"mode"`
 	AgentA    string       `json:"agent_a"` // "provider:persona"
 	AgentB    string       `json:"agent_b"`
 	TurnCount int          `json:"turn_count"`
@@ -93,16 +87,15 @@ type DebateSummary struct {
 
 // NewDebateConfig holds the configuration for creating a new debate.
 type NewDebateConfig struct {
-	Topic          string     `json:"topic"`
-	AgentAProvider string     `json:"agent_a_provider"`
-	AgentAModel    string     `json:"agent_a_model"`
-	AgentAPersona  string     `json:"agent_a_persona"`
-	AgentBProvider string     `json:"agent_b_provider"`
-	AgentBModel    string     `json:"agent_b_model"`
-	AgentBPersona  string     `json:"agent_b_persona"`
-	Style          string     `json:"style"`
-	Mode           DebateMode `json:"mode"`
-	MaxTurns       int        `json:"max_turns"`
+	Topic          string `json:"topic"`
+	AgentAProvider string `json:"agent_a_provider"`
+	AgentAModel    string `json:"agent_a_model"`
+	AgentAPersona  string `json:"agent_a_persona"`
+	AgentBProvider string `json:"agent_b_provider"`
+	AgentBModel    string `json:"agent_b_model"`
+	AgentBPersona  string `json:"agent_b_persona"`
+	Style          string `json:"style"`
+	MaxTurns       int    `json:"max_turns"`
 }
 
 // IsModifiable returns true if the debate can be modified.
@@ -117,15 +110,17 @@ func (d *Debate) TotalTurns() int {
 
 // Council represents a multi-agent council session.
 type Council struct {
-	ID          string         `json:"id"`
-	Topic       string         `json:"topic"`
-	Members     []Agent        `json:"members"`
-	Chairman    Agent          `json:"chairman"`
-	Status      DebateStatus   `json:"status"`
-	Synthesis   string         `json:"synthesis,omitempty"`
-	CreatedAt   time.Time      `json:"created_at"`
-	UpdatedAt   time.Time      `json:"updated_at"`
-	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Topic       string       `json:"topic"`
+	CWD         string       `json:"cwd"`
+	Members     []Agent      `json:"members"`
+	Chairman    Agent        `json:"chairman"`
+	Status      DebateStatus `json:"status"`
+	Synthesis   string       `json:"synthesis,omitempty"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
+	CompletedAt *time.Time   `json:"completed_at,omitempty"`
 }
 
 // Response represents a council member's response in Stage 1.
@@ -150,7 +145,9 @@ type Ranking struct {
 // CouncilSummary is a lightweight representation for listing councils.
 type CouncilSummary struct {
 	ID          string       `json:"id"`
+	Title       string       `json:"title"`
 	Topic       string       `json:"topic"`
+	CWD         string       `json:"cwd"`
 	Status      DebateStatus `json:"status"`
 	MemberCount int          `json:"member_count"`
 	CreatedAt   time.Time    `json:"created_at"`

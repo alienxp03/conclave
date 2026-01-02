@@ -4,7 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/config"
+	"github.com/alienxp03/conclave/internal/config"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // QwenProvider implements the Provider interface for Qwen CLI.
@@ -16,10 +17,10 @@ type QwenProvider struct {
 // NewQwenProvider creates a new Qwen provider with defaults.
 func NewQwenProvider() *QwenProvider {
 	return NewQwenProviderWithConfig(config.ProviderConfig{
-		Command:      "qwen",
-		Args:         []string{},
-		DefaultModel: "",
-		Models:       []string{"qwen-turbo", "qwen-plus", "qwen-max"},
+		Command:      core.DefaultCommandForProvider["qwen"],
+		Args:         core.DefaultArgsForProvider["qwen"],
+		DefaultModel: core.DefaultModelForProvider["qwen"],
+		Models:       core.DefaultModelsForProvider["qwen"],
 		Timeout:      0,
 		Enabled:      true,
 	})

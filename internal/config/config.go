@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/alienxp03/conclave/internal/core"
 	"gopkg.in/yaml.v3"
 )
 
@@ -51,6 +52,24 @@ type PersonaConfig struct {
 
 // Default returns the default configuration.
 func Default() *Config {
+	providers := make(map[string]ProviderConfig)
+	for name, cmd := range core.DefaultCommandForProvider {
+		providers[name] = ProviderConfig{
+			Command:      cmd,
+			Args:         core.DefaultArgsForProvider[name],
+			DefaultModel: core.DefaultModelForProvider[name],
+			Models:       core.DefaultModelsForProvider[name],
+			Timeout:      5 * time.Minute,
+			Enabled:      true,
+		}
+	}
+
+	// Adjust mock timeout
+	if mock, ok := providers["mock"]; ok {
+		mock.Timeout = 1 * time.Minute
+		providers["mock"] = mock
+	}
+
 	return &Config{
 		Defaults: DefaultsConfig{
 			Style:    "collaborative",
@@ -61,48 +80,7 @@ func Default() *Config {
 		Server: ServerConfig{
 			Port: 8182,
 		},
-		Providers: map[string]ProviderConfig{
-			"claude": {
-				Command:      "claude",
-				Args:         []string{"--print"},
-				DefaultModel: "",
-				Models:       []string{"opus", "sonnet", "haiku"},
-				Timeout:      5 * time.Minute,
-				Enabled:      true,
-			},
-			"codex": {
-				Command:      "codex",
-				Args:         []string{},
-				DefaultModel: "",
-				Models:       []string{"gpt-4", "gpt-4o", "gpt-3.5-turbo"},
-				Timeout:      5 * time.Minute,
-				Enabled:      true,
-			},
-			"gemini": {
-				Command:      "gemini",
-				Args:         []string{},
-				DefaultModel: "",
-				Models:       []string{"pro", "flash", "ultra"},
-				Timeout:      5 * time.Minute,
-				Enabled:      true,
-			},
-			"qwen": {
-				Command:      "qwen",
-				Args:         []string{},
-				DefaultModel: "",
-				Models:       []string{"qwen-turbo", "qwen-plus", "qwen-max"},
-				Timeout:      5 * time.Minute,
-				Enabled:      true,
-			},
-			"mock": {
-				Command:      "",
-				Args:         []string{},
-				DefaultModel: "mock-v1",
-				Models:       []string{"mock-v1", "mock-v2"},
-				Timeout:      1 * time.Minute,
-				Enabled:      true,
-			},
-		},
+		Providers: providers,
 	}
 }
 
@@ -177,15 +155,15 @@ func (c *Config) GetProvider(name string) (ProviderConfig, bool) {
 func DefaultConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "dbate.yaml"
+		return "conclave.yaml"
 	}
-	return filepath.Join(home, ".dbate", "config.yaml")
+	return filepath.Join(home, ".conclave", "config.yaml")
 }
 
 // GenerateExample generates an example configuration file.
 func GenerateExample() string {
-	example := `# dbate configuration file
-# Place this file at ~/.dbate/config.yaml
+	example := `# conclave configuration file
+# Place this file at ~/.conclave/config.yaml
 
 defaults:
   style: collaborative      # Default debate style

@@ -1,8 +1,8 @@
-# dbate Web UI
+# conclave Web UI
 
 ## Modern React Frontend
 
-The dbate web interface has been completely rewritten with a modern React stack for a vastly improved user experience.
+The conclave web interface has been completely rewritten with a modern React stack for a vastly improved user experience.
 
 ## What Changed
 
@@ -73,7 +73,7 @@ Build everything and run:
 make build
 
 # Run the server
-./bin/dbate serve
+./bin/conclave serve
 # Visit http://localhost:8080
 ```
 

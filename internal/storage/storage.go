@@ -2,7 +2,7 @@
 package storage
 
 import (
-	"github.com/alienxp03/dbate/internal/core"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // Storage defines the interface for debate persistence.
@@ -17,6 +17,7 @@ type Storage interface {
 	CreateDebate(debate *core.Debate) error
 	GetDebate(id string) (*core.Debate, error)
 	UpdateDebate(debate *core.Debate) error
+	UpdateDebateTitle(id, title string) error
 	DeleteDebate(id string) error
 	ListDebates(limit, offset int) ([]*core.DebateSummary, error)
 
@@ -37,6 +38,7 @@ type Storage interface {
 	CreateCouncil(council *core.Council) error
 	GetCouncil(id string) (*core.Council, error)
 	UpdateCouncil(council *core.Council) error
+	UpdateCouncilTitle(id, title string) error
 	DeleteCouncil(id string) error
 	ListCouncils(limit, offset int) ([]*core.CouncilSummary, error)
 

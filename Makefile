@@ -1,8 +1,8 @@
 .PHONY: build test clean run serve help install uninstall build-frontend dev-frontend
 
 # Binary names
-CLI_BINARY=dbate
-SERVER_BINARY=dbate-server
+CLI_BINARY=conclave
+SERVER_BINARY=conclave-server
 
 # Build directory
 BUILD_DIR=bin
@@ -28,14 +28,14 @@ help: ## Show this help
 
 build: build-frontend ## Build CLI and server binaries with frontend
 	@mkdir -p $(BUILD_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY) ./cmd/dbate/
+	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY) ./cmd/conclave/
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVER_BINARY) ./cmd/server/
 
 build-cli: ## Build only CLI binary
 	@mkdir -p $(BUILD_DIR)
-	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY) ./cmd/dbate/
+	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY) ./cmd/conclave/
 
-build-server: ## Build only server binary
+build-server: build-frontend ## Build only server binary
 	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVER_BINARY) ./cmd/server/
 
@@ -64,16 +64,16 @@ dev-frontend: ## Run React frontend in development mode
 run: build-cli ## Build and show CLI help
 	./$(BUILD_DIR)/$(CLI_BINARY) --help
 
-serve: build-cli ## Build and start web server
-	./$(BUILD_DIR)/$(CLI_BINARY) serve
+serve: build-server ## Build and start web server
+	./$(BUILD_DIR)/$(SERVER_BINARY)
 
-install: build ## Install dbate to ~/.local/bin (no sudo)
+install: build ## Install conclave to ~/.local/bin (no sudo)
 	@mkdir -p ~/.local/bin
 	cp $(BUILD_DIR)/$(CLI_BINARY) ~/.local/bin/
 	@echo "Installed $(CLI_BINARY) to ~/.local/bin/"
 	@echo "Ensure ~/.local/bin is in your PATH"
 
-uninstall: ## Remove dbate from common locations
+uninstall: ## Remove conclave from common locations
 	@rm -f /usr/local/bin/$(CLI_BINARY) 2>/dev/null || true
 	@rm -f ~/.local/bin/$(CLI_BINARY) 2>/dev/null || true
 	@rm -f $(GOPATH)/bin/$(CLI_BINARY) 2>/dev/null || true

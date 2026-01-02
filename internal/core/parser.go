@@ -105,12 +105,40 @@ func AssignDefaultPersonas(members []MemberSpec) []MemberSpec {
 	return result
 }
 
+// DefaultCommandForProvider returns the default command for a provider.
+var DefaultCommandForProvider = map[string]string{
+	"claude": "claude",
+	"gemini": "gemini",
+	"qwen":   "qwen",
+	"codex":  "codex",
+	"mock":   "",
+}
+
+// DefaultArgsForProvider returns the default arguments for a provider.
+var DefaultArgsForProvider = map[string][]string{
+	"claude": {"--print"},
+	"gemini": {},
+	"qwen":   {},
+	"codex":  {},
+	"mock":   {},
+}
+
+// DefaultModelsForProvider returns the list of supported models for a provider.
+var DefaultModelsForProvider = map[string][]string{
+	"claude": {"opus-4.5", "sonnet-4.5", "haiku-4.5"},
+	"gemini": {"gemini-3-pro-preview", "gemini-3-flash-preview"},
+	"qwen":   {"qwen-3-coder-plus"},
+	"codex":  {"gpt-5.2-codex", "gpt-5.2"},
+	"mock":   {"mock-v1", "mock-v2"},
+}
+
 // DefaultModelForProvider returns the default model for a provider.
 var DefaultModelForProvider = map[string]string{
-	"claude": "sonnet",
-	"gemini": "pro",
-	"qwen":   "max",
-	"codex":  "gpt-5.1-codex",
+	"claude": "sonnet-4.5",
+	"gemini": "gemini-3-flash-preview",
+	"qwen":   "qwen-3-coder-plus",
+	"codex":  "gpt-5.2-codex",
+	"mock":   "mock-v1",
 }
 
 // BestModelForProvider returns the best (most capable) model for a provider.
@@ -119,7 +147,8 @@ var BestModelForProvider = map[string]string{
 	"claude": "opus",
 	"gemini": "pro",
 	"qwen":   "max",
-	"codex":  "gpt-5.1-codex",
+	"codex":  "gpt-5.2-codex",
+	"mock":   "mock-v1",
 }
 
 // AssignDefaultModels assigns default models to member specs that don't have one.

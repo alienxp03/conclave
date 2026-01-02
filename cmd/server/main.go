@@ -3,21 +3,32 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/alienxp03/dbate/internal/provider"
-	"github.com/alienxp03/dbate/internal/storage"
-	"github.com/alienxp03/dbate/web/handlers"
+	"github.com/alienxp03/conclave/internal/provider"
+	"github.com/alienxp03/conclave/internal/storage"
+	"github.com/alienxp03/conclave/web/handlers"
 )
 
 func main() {
 	port := flag.Int("port", 8182, "Server port")
-	dbPath := flag.String("db", "", "Database path (default: ~/.dbate/dbate.db)")
+	dbPath := flag.String("db", "", "Database path (default: ~/.conclave/conclave.db)")
+	debug := flag.Bool("debug", false, "Enable debug logging")
 	flag.Parse()
+
+	// Initialize slog
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}
+	if *debug {
+		opts.Level = slog.LevelDebug
+	}
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, opts))
+	slog.SetDefault(logger)
 
 	// Initialize storage
 	path := *dbPath
@@ -25,14 +36,17 @@ func main() {
 		path = storage.DefaultDBPath()
 	}
 
+	slog.Info("Initializing storage", "path", path)
 	store, err := storage.NewSQLiteStorage(path)
 	if err != nil {
-		log.Fatalf("Failed to initialize storage: %v", err)
+		slog.Error("Failed to initialize storage", "error", err)
+		os.Exit(1)
 	}
 	defer store.Close()
 
 	if err := store.Initialize(); err != nil {
-		log.Fatalf("Failed to initialize database: %v", err)
+		slog.Error("Failed to initialize database", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize provider registry
@@ -57,12 +71,13 @@ func main() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 		<-sigCh
-		log.Println("Shutting down...")
+		slog.Info("Shutting down...")
 		server.Close()
 	}()
 
-	log.Printf("Starting dbate web server on http://localhost%s", addr)
+	slog.Info("Starting conclave web server", "url", fmt.Sprintf("http://localhost%s", addr))
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatalf("Server error: %v", err)
+		slog.Error("Server error", "error", err)
+		os.Exit(1)
 	}
 }

@@ -4,23 +4,24 @@ package council
 import (
 	"context"
 	"fmt"
-	"regexp"
+	"log/slog"
+	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/google/uuid"
-
-	"github.com/alienxp03/dbate/internal/core"
-	"github.com/alienxp03/dbate/internal/persona"
-	"github.com/alienxp03/dbate/internal/provider"
-	"github.com/alienxp03/dbate/internal/storage"
+	"github.com/alienxp03/conclave/internal/core"
+	"github.com/alienxp03/conclave/internal/persona"
+	"github.com/alienxp03/conclave/internal/provider"
+	"github.com/alienxp03/conclave/internal/storage"
 )
 
 // Engine orchestrates council sessions.
 type Engine struct {
 	storage  storage.Storage
 	registry *provider.Registry
+	running  sync.Map // councilID -> bool
 }
 
 // New creates a new council engine.
@@ -61,7 +62,7 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 		}
 
 		agents[i] = core.Agent{
-			ID:       uuid.New().String(),
+			ID:       core.GenerateID(),
 			Name:     fmt.Sprintf("%s (%s)", member.Provider, personaDef.Name),
 			Provider: member.Provider,
 			Model:    member.Model,
@@ -78,7 +79,7 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 		}
 
 		chairman = core.Agent{
-			ID:       uuid.New().String(),
+			ID:       core.GenerateID(),
 			Name:     fmt.Sprintf("Chairman (%s)", chairmanSpec.Provider),
 			Provider: chairmanSpec.Provider,
 			Model:    chairmanSpec.Model,
@@ -88,7 +89,7 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 		// Use default chairman (first member's provider with best model)
 		defaultChairman := core.GetDefaultChairman(members)
 		chairman = core.Agent{
-			ID:       uuid.New().String(),
+			ID:       core.GenerateID(),
 			Name:     fmt.Sprintf("Chairman (%s)", defaultChairman.Provider),
 			Provider: defaultChairman.Provider,
 			Model:    defaultChairman.Model,
@@ -98,9 +99,11 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 
 	// Create council
 	now := time.Now()
+	cwd, _ := os.Getwd()
 	council := &core.Council{
-		ID:        uuid.New().String(),
+		ID:        core.GenerateID(),
 		Topic:     config.Topic,
+		CWD:       cwd,
 		Members:   agents,
 		Chairman:  chairman,
 		Status:    core.StatusPending,
@@ -108,7 +111,60 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 		UpdatedAt: now,
 	}
 
+	// Save to storage
+	if err := e.storage.CreateCouncil(council); err != nil {
+		return nil, fmt.Errorf("failed to save council: %w", err)
+	}
+
+	// Summarize topic in background
+	go e.AutoSummarize(council.ID, config.Topic, council.Chairman.Provider)
+
 	return council, nil
+}
+
+// AutoSummarize generates a summary title and updates the council.
+func (e *Engine) AutoSummarize(id, topic, providerName string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	title, err := e.SummarizeTopic(ctx, topic, providerName)
+	if err != nil {
+		slog.Error("Failed to auto-summarize topic", "id", id, "error", err)
+		return
+	}
+
+	if err := e.storage.UpdateCouncilTitle(id, title); err != nil {
+		slog.Error("Failed to update council title", "id", id, "error", err)
+	}
+}
+
+// SummarizeTopic generates a 3-4 word title from a topic.
+func (e *Engine) SummarizeTopic(ctx context.Context, topic string, providerName string) (string, error) {
+	prov, err := e.registry.Get(providerName)
+	if err != nil {
+		return "", err
+	}
+
+	prompt := fmt.Sprintf(`Summarize the following question or topic as a 3-4 word title. 
+Topic: "%s"
+
+Respond with ONLY the title. No punctuation.`, topic)
+
+	var response string
+	response, err = prov.Generate(ctx, prompt)
+	if err != nil {
+		return "", err
+	}
+
+	title := strings.TrimSpace(response)
+	title = strings.Trim(title, `"'`)
+	// Ensure it's not too long
+	words := strings.Fields(title)
+	if len(words) > 5 {
+		title = strings.Join(words[:5], " ")
+	}
+
+	return title, nil
 }
 
 // CouncilCallbacks contains callback functions for council progress.
@@ -116,6 +172,7 @@ type CouncilCallbacks struct {
 	OnResponseCollected func(agent core.Agent, response string)
 	OnRankingCollected  func(agent core.Agent, ranking string)
 	OnSynthesisComplete func(synthesis string)
+	OnStageComplete     func(stage int)
 }
 
 // RunCouncil executes all 3 stages of the council process.
@@ -125,49 +182,83 @@ func (e *Engine) RunCouncil(ctx context.Context, council *core.Council) error {
 
 // RunCouncilWithCallbacks executes all 3 stages with progress callbacks.
 func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Council, callbacks *CouncilCallbacks) error {
-	// Save council first
-	if err := e.storage.CreateCouncil(council); err != nil {
-		return fmt.Errorf("failed to create council: %w", err)
+	slog.Info("Starting council execution", "council_id", council.ID, "topic", council.Topic)
+
+	// Check if already running
+	if _, loaded := e.running.LoadOrStore(council.ID, true); loaded {
+		slog.Warn("Council already running, skipping duplicate execution", "council_id", council.ID)
+		return nil
+	}
+	defer e.running.Delete(council.ID)
+
+	// Ensure council is in storage and set to in_progress
+	existing, _ := e.storage.GetCouncil(council.ID)
+	if existing == nil {
+		if err := e.storage.CreateCouncil(council); err != nil {
+			return fmt.Errorf("failed to create council: %w", err)
+		}
 	}
 
-	// Update status
-	council.Status = core.StatusInProgress
-	council.UpdatedAt = time.Now()
-	e.storage.UpdateCouncil(council)
+	// Update status to in_progress if it's not already
+	if council.Status != core.StatusInProgress {
+		council.Status = core.StatusInProgress
+		council.UpdatedAt = time.Now()
+		if err := e.storage.UpdateCouncil(council); err != nil {
+			slog.Error("Failed to update council status", "error", err)
+		}
+	}
 
 	// Stage 1: Collect responses
+	slog.Debug("Stage 1: Collecting responses", "council_id", council.ID)
 	responses, err := e.CollectResponsesWithCallback(ctx, council, callbacks)
 	if err != nil {
+		slog.Error("Stage 1 failed", "error", err)
 		council.Status = core.StatusFailed
 		e.storage.UpdateCouncil(council)
 		return fmt.Errorf("stage 1 failed: %w", err)
 	}
 
+	if callbacks != nil && callbacks.OnStageComplete != nil {
+		callbacks.OnStageComplete(1)
+	}
+
 	// Save responses
 	for _, r := range responses {
+		r := r // capture loop variable
 		if err := e.storage.AddResponse(&r); err != nil {
+			slog.Error("Failed to save response", "error", err)
 			return fmt.Errorf("failed to save response: %w", err)
 		}
 	}
 
 	// Stage 2: Collect rankings
+	slog.Debug("Stage 2: Collecting rankings", "council_id", council.ID)
 	rankings, err := e.CollectRankingsWithCallback(ctx, council, responses, callbacks)
 	if err != nil {
+		slog.Error("Stage 2 failed", "error", err)
 		council.Status = core.StatusFailed
 		e.storage.UpdateCouncil(council)
 		return fmt.Errorf("stage 2 failed: %w", err)
 	}
 
+	if callbacks != nil && callbacks.OnStageComplete != nil {
+		callbacks.OnStageComplete(2)
+	}
+
 	// Save rankings
 	for _, r := range rankings {
+		r := r // capture loop variable
 		if err := e.storage.AddRanking(&r); err != nil {
+			slog.Error("Failed to save ranking", "error", err)
 			return fmt.Errorf("failed to save ranking: %w", err)
 		}
 	}
 
-	// Stage 3: Generate synthesis
+	// Stage 3: Synthesis
+	slog.Debug("Stage 3: Generating synthesis", "council_id", council.ID)
 	synthesis, err := e.GenerateSynthesis(ctx, council, responses, rankings)
 	if err != nil {
+		slog.Error("Stage 3 failed", "error", err)
 		council.Status = core.StatusFailed
 		e.storage.UpdateCouncil(council)
 		return fmt.Errorf("stage 3 failed: %w", err)
@@ -180,14 +271,9 @@ func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Coun
 	// Update council
 	council.Synthesis = synthesis
 	council.Status = core.StatusCompleted
-	now := time.Now()
-	council.CompletedAt = &now
-	council.UpdatedAt = now
+	e.storage.UpdateCouncil(council)
 
-	if err := e.storage.UpdateCouncil(council); err != nil {
-		return fmt.Errorf("failed to update council: %w", err)
-	}
-
+	slog.Info("Council execution completed", "council_id", council.ID)
 	return nil
 }
 
@@ -229,7 +315,7 @@ func (e *Engine) CollectResponsesWithCallback(ctx context.Context, council *core
 			}
 
 			response := core.Response{
-				ID:        uuid.New().String(),
+				ID:        core.GenerateID(),
 				CouncilID: council.ID,
 				MemberID:  agent.ID,
 				Content:   content,
@@ -279,8 +365,8 @@ func (e *Engine) CollectRankings(ctx context.Context, council *core.Council, res
 
 // CollectRankingsWithCallback collects rankings with progress callbacks.
 func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.Council, responses []core.Response, callbacks *CouncilCallbacks) ([]core.Ranking, error) {
-	// Anonymize responses for unbiased ranking
-	anonymized := e.anonymizeResponses(responses)
+	// Format responses for ranking (using names)
+	formattedResponses := e.formatResponsesForRanking(responses, council.Members)
 
 	type rankingResult struct {
 		agent   core.Agent
@@ -294,7 +380,7 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 	for _, member := range council.Members {
 		go func(agent core.Agent) {
 			// Build ranking prompt
-			prompt := e.buildRankingPrompt(council.Topic, anonymized)
+			prompt := e.buildRankingPrompt(council.Topic, formattedResponses)
 
 			// Execute provider
 			prov, err := e.registry.Get(agent.Provider)
@@ -310,14 +396,14 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 			}
 
 			// Parse rankings from response
-			rankedIDs, err := e.parseRankingsFromText(content, responses)
+			rankedIDs, err := e.parseRankingsFromText(content, responses, council.Members)
 			if err != nil {
 				resultChan <- rankingResult{agent: agent, content: content, err: fmt.Errorf("failed to parse rankings for %s: %w\n\nRaw response:\n%s", agent.Name, err, content)}
 				return
 			}
 
 			ranking := core.Ranking{
-				ID:         uuid.New().String(),
+				ID:         core.GenerateID(),
 				CouncilID:  council.ID,
 				ReviewerID: agent.ID,
 				Rankings:   rankedIDs,
@@ -420,17 +506,19 @@ Topic: %s
 
 Provide your perspective on this topic. Focus on what matters most from your viewpoint.
 
-Your response:`, personaDef.SystemPrompt, topic)
+Your response:
+
+Use Markdown format.`, personaDef.SystemPrompt, topic)
 
 	return prompt, nil
 }
 
-func (e *Engine) buildRankingPrompt(topic string, anonymizedResponses string) string {
+func (e *Engine) buildRankingPrompt(topic string, formattedResponses string) string {
 	return fmt.Sprintf(`You are evaluating multiple responses to the following topic:
 
 Topic: %s
 
-Here are the anonymized responses:
+Here are the responses from different perspectives:
 
 %s
 
@@ -441,12 +529,14 @@ Your task:
 IMPORTANT: You MUST end your response with a ranking section in this EXACT format:
 
 FINAL RANKING:
-1. Response A
-2. Response B
+1. [Name of Agent 1]
+2. [Name of Agent 2]
 
-(Replace A, B with the actual letters based on quality, best first)
+(List the agents from best to worst based on the quality of their response)
 
-Your evaluation:`, topic, anonymizedResponses)
+Your evaluation:
+
+Use Markdown format.`, topic, formattedResponses)
 }
 
 func (e *Engine) buildSynthesisPrompt(topic string, responses []core.Response, aggregateRanks []core.AggregateRanking, members []core.Agent) string {
@@ -486,40 +576,59 @@ Your task:
 3. Highlight the strongest arguments (based on rankings)
 4. Provide a balanced recommendation
 
-Your synthesis:`, topic, responsesText.String(), rankingsText.String())
+Your synthesis:
+
+Use Markdown format.`, topic, responsesText.String(), rankingsText.String())
 }
 
-func (e *Engine) anonymizeResponses(responses []core.Response) string {
-	labels := []string{"A", "B", "C", "D", "E", "F", "G", "H"}
-	var result strings.Builder
+func (e *Engine) formatResponsesForRanking(responses []core.Response, members []core.Agent) string {
+	memberMap := make(map[string]core.Agent)
+	for _, m := range members {
+		memberMap[m.ID] = m
+	}
 
-	for i, r := range responses {
-		if i < len(labels) {
-			result.WriteString(fmt.Sprintf("\nResponse %s:\n%s\n", labels[i], r.Content))
+	var result strings.Builder
+	for _, r := range responses {
+		agent, ok := memberMap[r.MemberID]
+		name := "Unknown"
+		if ok {
+			name = agent.Name
 		}
+		result.WriteString(fmt.Sprintf("\nResponse by %s:\n%s\n", name, r.Content))
 	}
 
 	return result.String()
 }
 
-func (e *Engine) parseRankingsFromText(text string, responses []core.Response) ([]string, error) {
-	// Map labels to response IDs
-	labels := []string{"A", "B", "C", "D", "E", "F", "G", "H"}
-	labelToID := make(map[string]string)
-	for i, r := range responses {
-		if i < len(labels) {
-			labelToID[labels[i]] = r.ID
+func (e *Engine) parseRankingsFromText(text string, responses []core.Response, members []core.Agent) ([]string, error) {
+	// Map member identifiers to response IDs
+	idMap := make(map[string]string)
+	memberMap := make(map[string]core.Agent)
+	for _, m := range members {
+		memberMap[m.ID] = m
+	}
+
+	for _, r := range responses {
+		if agent, ok := memberMap[r.MemberID]; ok {
+			// Map various ways an agent might be identified
+			idMap[strings.ToLower(agent.Name)] = r.ID
+			idMap[strings.ToLower(agent.Provider)] = r.ID
+			idMap[strings.ToLower(agent.Persona)] = r.ID
+
+			// Also map provider + persona format like "qwen (Pragmatist)"
+			// This matches how agents are named in Engine.CreateCouncil
+			// but we handle it case-insensitively.
 		}
 	}
 
-	// Try to find a ranking section with various headers
+	// Try to find a ranking section
 	rankingSection := ""
 	lines := strings.Split(text, "\n")
 	inRanking := false
 
 	rankingHeaders := []string{
 		"FINAL RANKING",
-		"RANKING",
+		"RANKING:",
 		"MY RANKING",
 		"RANKED",
 		"ORDER",
@@ -529,100 +638,84 @@ func (e *Engine) parseRankingsFromText(text string, responses []core.Response) (
 
 	for _, line := range lines {
 		upperLine := strings.ToUpper(line)
+		headerFound := false
 		for _, header := range rankingHeaders {
 			if strings.Contains(upperLine, header) {
 				inRanking = true
+				headerFound = true
 				break
 			}
 		}
-		if inRanking {
+		if inRanking && !headerFound {
 			rankingSection += line + "\n"
 		}
 	}
 
-	// If no explicit ranking section, use the entire text
 	if rankingSection == "" {
 		rankingSection = text
 	}
 
-	// Try multiple patterns to extract rankings
 	var rankedIDs []string
+	seen := make(map[string]bool)
 
-	// Pattern 1: "1. Response A", "2. Response B"
-	re1 := regexp.MustCompile(`(?i)\d+[\.\)]\s*Response\s+([A-H])`)
-	if matches := re1.FindAllStringSubmatch(rankingSection, -1); len(matches) > 0 {
-		for _, match := range matches {
-			if len(match) > 1 {
-				label := strings.ToUpper(match[1])
-				if id, ok := labelToID[label]; ok {
-					rankedIDs = append(rankedIDs, id)
+	// Go through lines in ranking section and find identifiers
+	rankLines := strings.Split(rankingSection, "\n")
+	for _, line := range rankLines {
+		lineLower := strings.ToLower(line)
+		if strings.TrimSpace(lineLower) == "" {
+			continue
+		}
+
+		// Check for identifiers in this line
+		// We want to find the BEST match in the line
+		var foundID string
+		var bestMatchLen int
+
+		for identifier, id := range idMap {
+			if seen[id] {
+				continue
+			}
+
+			// Check if identifier is in line
+			if strings.Contains(lineLower, identifier) {
+				// Keep track of longest match to handle "qwen" vs "qwen (Pragmatist)"
+				if len(identifier) > bestMatchLen {
+					bestMatchLen = len(identifier)
+					foundID = id
 				}
 			}
 		}
-	}
 
-	// Pattern 2: "1. A", "2. B" or "1) A", "2) B"
-	if len(rankedIDs) == 0 {
-		re2 := regexp.MustCompile(`\d+[\.\)]\s*([A-H])\b`)
-		if matches := re2.FindAllStringSubmatch(rankingSection, -1); len(matches) > 0 {
-			for _, match := range matches {
-				if len(match) > 1 {
-					label := strings.ToUpper(match[1])
-					if id, ok := labelToID[label]; ok {
-						rankedIDs = append(rankedIDs, id)
-					}
-				}
-			}
+		if foundID != "" {
+			rankedIDs = append(rankedIDs, foundID)
+			seen[foundID] = true
 		}
 	}
 
-	// Pattern 3: "A > B > C" or "A, B, C"
+	// If no rankings found at all, it's an error in parsing
 	if len(rankedIDs) == 0 {
-		re3 := regexp.MustCompile(`\b([A-H])\s*[>,]\s*([A-H])`)
-		if matches := re3.FindAllStringSubmatch(rankingSection, -1); len(matches) > 0 {
-			seen := make(map[string]bool)
-			for _, match := range matches {
-				for i := 1; i < len(match); i++ {
-					label := strings.ToUpper(match[i])
-					if !seen[label] {
-						if id, ok := labelToID[label]; ok {
-							rankedIDs = append(rankedIDs, id)
-							seen[label] = true
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Pattern 4: Just find any mentions of "Response A/B/C" in order of appearance
-	if len(rankedIDs) == 0 {
-		re4 := regexp.MustCompile(`(?i)Response\s+([A-H])`)
-		seen := make(map[string]bool)
-		if matches := re4.FindAllStringSubmatch(rankingSection, -1); len(matches) > 0 {
-			for _, match := range matches {
-				if len(match) > 1 {
-					label := strings.ToUpper(match[1])
-					if !seen[label] {
-						if id, ok := labelToID[label]; ok {
-							rankedIDs = append(rankedIDs, id)
-							seen[label] = true
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// If still no rankings found, fall back to original response order
-	if len(rankedIDs) == 0 {
-		// Use response order as fallback (not ideal but prevents failures)
+		slog.Warn("Failed to parse any rankings from text", "text_preview", text[:min(len(text), 200)])
+		// Use response order as fallback
 		for _, r := range responses {
 			rankedIDs = append(rankedIDs, r.ID)
+		}
+	} else if len(rankedIDs) < len(responses) {
+		// Append unranked responses at the end
+		for _, r := range responses {
+			if !seen[r.ID] {
+				rankedIDs = append(rankedIDs, r.ID)
+			}
 		}
 	}
 
 	return rankedIDs, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (e *Engine) calculateAggregateRankings(responses []core.Response, rankings []core.Ranking, members []core.Agent) []core.AggregateRanking {
