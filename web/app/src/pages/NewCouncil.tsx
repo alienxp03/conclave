@@ -17,10 +17,13 @@ export function NewCouncil() {
   const [error, setError] = useState<string | null>(null);
 
   // Members state
-  const [members, setMembers] = useState<MemberSpec[]>([
-    { Provider: '', Persona: '' },
-    { Provider: '', Persona: '' },
-  ]);
+  const [members, setMembers] = useState<MemberSpec[]>(() => {
+    const saved = localStorage.getItem('council_members');
+    return saved ? JSON.parse(saved) : [
+      { Provider: '', Persona: '' },
+      { Provider: '', Persona: '' },
+    ];
+  });
 
   const { data: providers } = useQuery({
     queryKey: ['providers'],
@@ -53,21 +56,26 @@ export function NewCouncil() {
     const availableProviders = providers.filter(p => p.available && p.name !== 'mock');
     const defaultProvider = availableProviders.length > 0 ? availableProviders[0].name : '';
     
-    setMembers([...members, { 
+    const newMembers = [...members, { 
       Provider: defaultProvider, 
       Persona: personas[members.length % personas.length]?.id || personas[0].id 
-    }]);
+    }];
+    setMembers(newMembers);
+    localStorage.setItem('council_members', JSON.stringify(newMembers));
   };
 
   const handleRemoveMember = (index: number) => {
     if (members.length <= 2) return;
-    setMembers(members.filter((_, i) => i !== index));
+    const newMembers = members.filter((_, i) => i !== index);
+    setMembers(newMembers);
+    localStorage.setItem('council_members', JSON.stringify(newMembers));
   };
 
   const handleMemberChange = (index: number, field: keyof MemberSpec, value: string) => {
     const newMembers = [...members];
     newMembers[index] = { ...newMembers[index], [field]: value };
     setMembers(newMembers);
+    localStorage.setItem('council_members', JSON.stringify(newMembers));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -115,16 +123,16 @@ export function NewCouncil() {
   };
 
   return (
-    <div className="min-h-[70vh] flex flex-col items-center justify-center py-12">
-      <div className="max-w-4xl w-full mx-auto px-4">
-        <div className="mb-12 text-center">
+    <div className="min-h-[70vh] flex flex-col items-start justify-center py-12">
+      <div className="max-w-6xl w-full px-4">
+        <div className="mb-12 text-left">
           <div className="mb-6">
-            <span className="text-6xl">🏛️</span>
+            <span className="text-5xl">🏛️</span>
           </div>
-          <h1 className="text-5xl font-bold text-white mb-4 leading-tight">
+          <h1 className="text-4xl font-bold text-white mb-4 leading-tight">
             Convene a Council
           </h1>
-          <p className="text-xl text-gray-400">
+          <p className="text-lg text-gray-400">
             Gather AI agents to deliberate, rank perspectives, and reach a consensus
           </p>
         </div>
@@ -153,20 +161,20 @@ export function NewCouncil() {
               required
               autoFocus
               placeholder="e.g., How should we regulate AI safety?"
-              className="block w-full rounded-xl bg-gray-800 border-2 border-gray-600 text-white placeholder-gray-500 focus:border-blue-500 focus:ring-4 focus:ring-blue-500 focus:ring-opacity-30 text-xl p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
+              className="block w-full rounded-xl bg-brand-card border-2 border-brand-border text-[#d3c6aa] placeholder-[#5c6a72] focus:border-brand-primary focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 text-xl p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
             />
           </div>
 
-          <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 animate-fadeIn space-y-4">
-            <div className="flex justify-between items-center border-b border-gray-700 pb-2">
-              <h3 className="text-lg font-medium text-white">Council Members</h3>
-              <span className="text-sm text-gray-400">{members.length} members</span>
+          <div className="bg-brand-card p-6 rounded-xl border border-brand-border animate-fadeIn space-y-4">
+            <div className="flex justify-between items-center border-b border-brand-border pb-2">
+              <h3 className="text-lg font-medium text-[#d3c6aa]">Council Members</h3>
+              <span className="text-sm text-[#859289]">{members.length} members</span>
             </div>
             
             <div className="space-y-3">
               {members.map((member, index) => (
-                <div key={index} className="flex gap-4 items-center bg-gray-900 p-3 rounded-lg border border-gray-700">
-                  <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-gray-800 rounded-full text-gray-400 text-sm font-bold">
+                <div key={index} className="flex gap-4 items-center bg-brand-bg p-3 rounded-lg border border-brand-border">
+                  <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-brand-card rounded-full text-[#859289] text-sm font-bold">
                     {index + 1}
                   </div>
                   
@@ -175,7 +183,7 @@ export function NewCouncil() {
                       <select
                         value={member.Provider}
                         onChange={(e) => handleMemberChange(index, 'Provider', e.target.value)}
-                        className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 text-sm"
+                        className="w-full bg-brand-card border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-sm"
                       >
                         {providers?.filter(p => p.name !== 'mock').map((p) => (
                           <option key={p.name} value={p.name} disabled={!p.available}>
@@ -188,7 +196,7 @@ export function NewCouncil() {
                       <select
                         value={member.Persona}
                         onChange={(e) => handleMemberChange(index, 'Persona', e.target.value)}
-                        className="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 text-sm"
+                        className="w-full bg-brand-card border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-sm"
                       >
                         {personas?.map((p) => (
                           <option key={p.id} value={p.id}>{p.name}</option>
@@ -216,7 +224,7 @@ export function NewCouncil() {
               <button
                 type="button"
                 onClick={handleAddMember}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition-colors border border-gray-600"
+                className="flex items-center gap-2 px-4 py-2 bg-brand-card hover:bg-brand-bg rounded-lg text-sm text-[#d3c6aa] transition-colors border border-brand-border"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -230,7 +238,7 @@ export function NewCouncil() {
             <button
               type="submit"
               disabled={loading || !topic.trim() || !isReady}
-              className="group inline-flex items-center px-12 py-5 border border-transparent rounded-xl text-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 shadow-2xl transform transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              className="group inline-flex items-center px-12 py-5 border border-transparent rounded-xl text-xl font-bold text-[#2b3339] bg-brand-primary hover:bg-[#b8cc95] focus:outline-none focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 shadow-2xl transform transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {loading ? (
                 <>
@@ -261,7 +269,7 @@ export function NewCouncil() {
                   key={example}
                   type="button"
                   onClick={() => setTopic(example)}
-                  className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 hover:bg-gray-700 hover:border-gray-600 transition-colors"
+                  className="px-4 py-2 bg-brand-card border border-brand-border rounded-lg text-sm text-[#d3c6aa] hover:bg-brand-bg hover:border-brand-primary transition-colors"
                 >
                   {example.split(' ').slice(0, 3).join(' ')}...
                 </button>

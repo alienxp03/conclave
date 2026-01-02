@@ -19,7 +19,6 @@ export function NewDebate() {
 
   // Form state
   const [config, setConfig] = useState<Partial<CreateDebateRequest>>({
-    mode: 'automatic',
     max_turns: 5,
     auto_run: true,
   });
@@ -84,7 +83,6 @@ export function NewDebate() {
         agent_b_model: config.agent_b_model || '',
         agent_b_persona: config.agent_b_persona || '',
         style: config.style || '',
-        mode: config.mode || 'automatic',
         max_turns: config.max_turns || 5,
         auto_run: config.auto_run,
       };
@@ -106,16 +104,23 @@ export function NewDebate() {
   };
 
   return (
-    <div className="min-h-[70vh] flex flex-col items-center justify-center py-12">
-      <div className="max-w-4xl w-full mx-auto px-4">
-        <div className="mb-12 text-center">
-          <div className="mb-6">
-            <span className="text-6xl">🎭</span>
+    <div className="min-h-[70vh] flex flex-col items-start justify-center py-12">
+      <div className="max-w-4xl w-full px-4">
+        <div className="mb-12 text-left">
+          <div className="mb-6 flex justify-start">
+            <span className="text-brand-primary">
+              <svg className="w-16 h-16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.5997 2.37562 15.1116 3.04348 16.4522L2 22L7.54777 20.9565C8.88837 21.6244 10.4003 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M8 12H8.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 12H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M16 12H16.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
           </div>
-          <h1 className="text-5xl font-bold text-white mb-4 leading-tight">
+          <h1 className="text-4xl font-bold text-white mb-4 leading-tight">
             What should we debate?
           </h1>
-          <p className="text-xl text-gray-400">
+          <p className="text-lg text-gray-400">
             Enter a question and watch AI agents discuss different perspectives
           </p>
         </div>
@@ -154,7 +159,7 @@ export function NewDebate() {
               required
               autoFocus
               placeholder="e.g., Should AI replace human decision-making in healthcare?"
-              className="block w-full rounded-xl bg-gray-800 border-2 border-gray-600 text-white placeholder-gray-500 focus:border-blue-500 focus:ring-4 focus:ring-blue-500 focus:ring-opacity-30 text-xl p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
+              className="block w-full rounded-xl bg-brand-card border-2 border-brand-border text-[#d3c6aa] placeholder-[#5c6a72] focus:border-brand-primary focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 text-xl p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
             />
           </div>
 
@@ -162,22 +167,22 @@ export function NewDebate() {
              <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-sm text-gray-400 hover:text-white underline decoration-dotted underline-offset-4"
+              className="text-sm text-[#859289] hover:text-brand-primary underline decoration-dotted underline-offset-4"
             >
               {showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options'}
             </button>
           </div>
 
           {showAdvanced && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-800 p-6 rounded-xl border border-gray-700 animate-fadeIn">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-brand-card p-6 rounded-xl border border-brand-border animate-fadeIn">
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-white border-b border-gray-700 pb-2">Agent A</h3>
+                <h3 className="text-lg font-medium text-[#d3c6aa] border-b border-brand-border pb-2">Agent A</h3>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Provider</label>
+                  <label className="block text-sm font-medium text-[#859289] mb-1">Provider</label>
                   <select
                     value={config.agent_a_provider}
                     onChange={(e) => setConfig({ ...config, agent_a_provider: e.target.value })}
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
                   >
                     {providers?.filter(p => p.name !== 'mock').map((p) => (
                       <option key={p.name} value={p.name} disabled={!p.available}>
@@ -187,11 +192,11 @@ export function NewDebate() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Persona</label>
+                  <label className="block text-sm font-medium text-[#859289] mb-1">Persona</label>
                   <select
                     value={config.agent_a_persona}
                     onChange={(e) => setConfig({ ...config, agent_a_persona: e.target.value })}
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
                   >
                     {personas?.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
@@ -201,13 +206,13 @@ export function NewDebate() {
               </div>
 
               <div className="space-y-4">
-                <h3 className="text-lg font-medium text-white border-b border-gray-700 pb-2">Agent B</h3>
+                <h3 className="text-lg font-medium text-[#d3c6aa] border-b border-brand-border pb-2">Agent B</h3>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Provider</label>
+                  <label className="block text-sm font-medium text-[#859289] mb-1">Provider</label>
                   <select
                     value={config.agent_b_provider}
                     onChange={(e) => setConfig({ ...config, agent_b_provider: e.target.value })}
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
                   >
                     {providers?.filter(p => p.name !== 'mock').map((p) => (
                       <option key={p.name} value={p.name} disabled={!p.available}>
@@ -217,11 +222,11 @@ export function NewDebate() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-1">Persona</label>
+                  <label className="block text-sm font-medium text-[#859289] mb-1">Persona</label>
                   <select
                     value={config.agent_b_persona}
                     onChange={(e) => setConfig({ ...config, agent_b_persona: e.target.value })}
-                    className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
                   >
                     {personas?.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
@@ -230,14 +235,14 @@ export function NewDebate() {
                 </div>
               </div>
 
-              <div className="md:col-span-2 space-y-4 pt-4 border-t border-gray-700">
+              <div className="md:col-span-2 space-y-4 pt-4 border-t border-brand-border">
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-1">Debate Style</label>
+                        <label className="block text-sm font-medium text-[#859289] mb-1">Debate Style</label>
                         <select
                             value={config.style}
                             onChange={(e) => setConfig({ ...config, style: e.target.value })}
-                            className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500"
+                            className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
                         >
                             {styles?.map((s) => (
                             <option key={s.id} value={s.id}>{s.name}</option>
@@ -245,14 +250,14 @@ export function NewDebate() {
                         </select>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-400 mb-1">Max Turns (per agent)</label>
+                        <label className="block text-sm font-medium text-[#859289] mb-1">Max Turns (per agent)</label>
                         <input
                             type="number"
                             min="1"
                             max="20"
                             value={config.max_turns}
                             onChange={(e) => setConfig({ ...config, max_turns: parseInt(e.target.value) })}
-                            className="w-full bg-gray-900 border border-gray-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-blue-500"
+                            className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
                         />
                     </div>
                  </div>
@@ -261,13 +266,13 @@ export function NewDebate() {
           )}
 
           <div className="flex flex-col items-center space-y-4">
-             <p className="text-sm text-gray-500">
+             <p className="text-sm text-[#859289]">
               Press Ctrl+Enter (⌘+Enter on Mac) to submit
             </p>
             <button
               type="submit"
               disabled={loading || !topic.trim() || !isReady}
-              className="group inline-flex items-center px-12 py-5 border border-transparent rounded-xl text-xl font-semibold text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-500 focus:ring-opacity-50 shadow-2xl transform transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              className="group inline-flex items-center px-12 py-5 border border-transparent rounded-xl text-xl font-bold text-[#2b3339] bg-brand-primary hover:bg-[#b8cc95] focus:outline-none focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 shadow-2xl transform transition-all duration-200 hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
               {loading ? (
                 <>
@@ -323,7 +328,7 @@ export function NewDebate() {
                   key={example}
                   type="button"
                   onClick={() => setTopic(example)}
-                  className="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-300 hover:bg-gray-700 hover:border-gray-600 transition-colors"
+                  className="px-4 py-2 bg-brand-card border border-brand-border rounded-lg text-sm text-[#d3c6aa] hover:bg-brand-bg hover:border-brand-primary transition-colors"
                 >
                   {example.split(' ').slice(0, 3).join(' ')}...
                 </button>

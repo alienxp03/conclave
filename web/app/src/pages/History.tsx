@@ -3,21 +3,43 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 
 export function History() {
-  const { data: debates, isLoading } = useQuery({
+  const { data: debates, isLoading: loadingDebates } = useQuery({
     queryKey: ['debates'],
     queryFn: () => api.getDebates(50, 0),
   });
 
+  const { data: councils, isLoading: loadingCouncils } = useQuery({
+    queryKey: ['councils'],
+    queryFn: () => api.getCouncils(50, 0),
+  });
+
+  const isLoading = loadingDebates || loadingCouncils;
+
+  // Merge and sort by date
+  const allItems = [
+    ...(debates || []).map(d => ({ ...d, type: 'debate' as const })),
+    ...(councils || []).map(c => ({ 
+      id: c.id, 
+      title: c.title,
+      topic: c.topic, 
+      cwd: c.cwd,
+      status: c.status, 
+      created_at: c.created_at, 
+      type: 'council' as const,
+      member_count: c.member_count
+    }))
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
   const statusColor = (status: string) => {
     switch (status) {
       case 'completed':
-        return 'bg-green-100 text-green-800';
+        return 'bg-brand-primary/10 text-brand-primary';
       case 'in_progress':
-        return 'bg-blue-100 text-blue-800';
+        return 'bg-brand-blue/10 text-brand-blue';
       case 'failed':
-        return 'bg-red-100 text-red-800';
+        return 'bg-brand-accent/10 text-brand-accent';
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'bg-brand-border text-[#859289]';
     }
   };
 
@@ -25,9 +47,9 @@ export function History() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <div className="inline-block p-6 bg-gray-800 rounded-2xl border-2 border-blue-500 shadow-2xl">
+          <div className="inline-block p-6 bg-brand-card rounded-2xl border-2 border-brand-primary shadow-2xl">
             <svg
-              className="animate-spin h-16 w-16 text-blue-500 mx-auto"
+              className="animate-spin h-16 w-16 text-brand-primary mx-auto"
               fill="none"
               viewBox="0 0 24 24"
             >
@@ -45,7 +67,7 @@ export function History() {
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
               />
             </svg>
-            <p className="mt-4 text-gray-400">Loading debates...</p>
+            <p className="mt-4 text-gray-400">Loading history...</p>
           </div>
         </div>
       </div>
@@ -56,12 +78,12 @@ export function History() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-4xl font-bold text-white mb-2">Your Debates</h1>
-          <p className="text-gray-400">Browse and revisit your AI discussions</p>
+          <h1 className="text-3xl font-bold text-white mb-2">Your Councils</h1>
+          <p className="text-gray-400">Browse and revisit your AI councils and debates</p>
         </div>
         <Link
           to="/"
-          className="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl text-base font-semibold inline-flex items-center shadow-lg transform transition-all duration-200 hover:scale-105"
+          className="bg-brand-primary hover:bg-[#b8cc95] text-[#2b3339] px-6 py-3 rounded-xl text-base font-bold inline-flex items-center shadow-lg transform transition-all duration-200 hover:scale-105"
         >
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -71,13 +93,13 @@ export function History() {
               d="M12 4v16m8-8H4"
             />
           </svg>
-          New Debate
+          New Council
         </Link>
       </div>
 
-      {!debates || debates.length === 0 ? (
-        <div className="text-center py-20 bg-gray-800 rounded-2xl border border-gray-700">
-          <div className="inline-block p-6 bg-gray-900 rounded-full mb-6">
+      {!allItems || allItems.length === 0 ? (
+        <div className="text-center py-20 bg-brand-card rounded-2xl border border-brand-border">
+          <div className="inline-block p-6 bg-brand-bg rounded-full mb-6">
             <svg
               className="h-20 w-20 text-gray-600"
               fill="none"
@@ -92,9 +114,9 @@ export function History() {
               />
             </svg>
           </div>
-          <h3 className="text-2xl font-semibold text-white mb-2">No debates yet</h3>
+          <h3 className="text-2xl font-semibold text-white mb-2">No history yet</h3>
           <p className="text-gray-400 mb-8 max-w-md mx-auto">
-            Start your first AI-powered debate and watch different perspectives unfold
+            Start your first AI-powered discussion and watch different perspectives unfold
           </p>
           <Link
             to="/"
@@ -108,33 +130,46 @@ export function History() {
                 d="M12 4v16m8-8H4"
               />
             </svg>
-            Start Your First Debate
+            Start New Council
           </Link>
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {debates.map((debate) => (
-            <Link key={debate.id} to={`/debates/${debate.id}`} className="block group">
-              <div className="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-blue-500 hover:shadow-xl transition-all duration-200 h-full flex flex-col">
+          {allItems.map((item) => (
+            <Link 
+              key={item.id} 
+              to={item.type === 'debate' ? `/debates/${item.id}` : `/councils/${item.id}`} 
+              className="block group"
+            >
+              <div className="bg-brand-card border border-brand-border rounded-xl p-6 hover:border-brand-primary hover:shadow-xl transition-all duration-200 h-full flex flex-col">
                 <div className="flex items-start justify-between mb-4">
-                  <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColor(debate.status)}`}>
-                    {debate.status}
-                  </span>
-                  {debate.read_only && (
+                  <div className="flex flex-col gap-1">
+                    <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusColor(item.status)}`}>
+                      {item.status}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold px-1">
+                      {item.type}
+                    </span>
+                  </div>
+                  {item.type === 'debate' && (item as any).read_only && (
                     <span className="text-yellow-400" title="Read-only">
                       🔒
                     </span>
                   )}
                 </div>
 
-                <h3 className="text-lg font-semibold text-white mb-3 group-hover:text-blue-400 transition-colors line-clamp-2">
-                  {debate.topic}
+                <h3 className="text-lg font-semibold text-white mb-4 group-hover:text-brand-primary transition-colors line-clamp-2">
+                  {item.title || item.topic}
                 </h3>
 
                 <div className="mt-auto space-y-3">
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-400">Turns</span>
-                    <span className="text-white font-medium">{debate.turn_count}</span>
+                    <span className="text-gray-400">
+                      {item.type === 'debate' ? 'Turns' : 'Members'}
+                    </span>
+                    <span className="text-white font-medium">
+                      {item.type === 'debate' ? (item as any).turn_count : (item as any).member_count}
+                    </span>
                   </div>
 
                   <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -146,16 +181,18 @@ export function History() {
                         d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
                       />
                     </svg>
-                    {new Date(debate.created_at).toLocaleString()}
+                    {new Date(item.created_at).toLocaleString()}
                   </div>
 
-                  <div className="pt-3 border-t border-gray-700">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-blue-400">{debate.agent_a.name}</span>
-                      <span className="text-gray-600">vs</span>
-                      <span className="text-green-400">{debate.agent_b.name}</span>
+                  {item.type === 'debate' && (
+                    <div className="pt-3 border-t border-brand-border">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-brand-primary font-bold">{(item as any).agent_a}</span>
+                        <span className="text-[#5c6a72]">vs</span>
+                        <span className="text-brand-secondary font-bold">{(item as any).agent_b}</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               </div>
             </Link>

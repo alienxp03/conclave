@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { api } from '../lib/api';
 import { useDebateStream } from '../hooks/useDebateStream';
 import { TurnCard } from '../components/TurnCard';
@@ -45,9 +47,9 @@ export function DebateView() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <div className="inline-block p-6 bg-gray-800 rounded-2xl border-2 border-blue-500 shadow-2xl">
+          <div className="inline-block p-6 bg-brand-card rounded-2xl border-2 border-brand-primary shadow-2xl">
             <svg
-              className="animate-spin h-16 w-16 text-blue-500 mx-auto"
+              className="animate-spin h-16 w-16 text-brand-primary mx-auto"
               fill="none"
               viewBox="0 0 24 24"
             >
@@ -86,53 +88,64 @@ export function DebateView() {
   }
 
   const statusColor = {
-    completed: 'bg-green-100 text-green-800',
-    in_progress: 'bg-blue-100 text-blue-800',
-    failed: 'bg-red-100 text-red-800',
-    pending: 'bg-gray-100 text-gray-800',
+    completed: 'bg-[#a7c080]/10 text-[#a7c080]',
+    in_progress: 'bg-[#7fbbb3]/10 text-[#7fbbb3]',
+    failed: 'bg-[#e67e80]/10 text-[#e67e80]',
+    pending: 'bg-[#3a454a] text-[#859289]',
   }[debate.status];
 
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
       <nav className="mb-4" aria-label="Breadcrumb">
-        <ol className="flex items-center space-x-2 text-sm text-gray-400">
+        <ol className="flex items-center space-x-2 text-sm text-[#859289]">
           <li>
-            <Link to="/" className="hover:text-white transition-colors">
+            <Link to="/" className="hover:text-brand-primary transition-colors">
               Home
             </Link>
           </li>
           <li>
-            <span className="text-gray-600">/</span>
+            <span className="text-brand-border">/</span>
           </li>
           <li>
-            <Link to="/history" className="hover:text-white transition-colors">
+            <Link to="/history" className="hover:text-brand-primary transition-colors">
               History
             </Link>
           </li>
           <li>
-            <span className="text-gray-600">/</span>
+            <span className="text-brand-border">/</span>
           </li>
-          <li className="text-gray-300">
-            {debate.topic.substring(0, 30)}
-            {debate.topic.length > 30 ? '...' : ''}
+          <li className="text-[#d3c6aa]">
+            {(debate.title || debate.topic).substring(0, 30)}
+            {(debate.title || debate.topic).length > 30 ? '...' : ''}
           </li>
         </ol>
       </nav>
 
       {/* Header */}
-      <div className="bg-gray-800 shadow-xl rounded-xl p-8 border border-gray-700">
+      <div className="bg-brand-card shadow-xl rounded-xl p-8 border border-brand-border">
         <div className="flex justify-between items-start">
           <div className="flex-1">
             <div className="flex items-center space-x-3">
-              <h1 className="text-2xl font-bold text-white">{debate.topic}</h1>
+              <h1 className="text-xl font-bold text-[#d3c6aa]">{debate.title || debate.topic}</h1>
               {debate.read_only && (
-                <span className="text-yellow-400" title="Read-only">
+                <span className="text-brand-secondary" title="Read-only">
                   🔒
                 </span>
               )}
             </div>
-            <div className="mt-3 flex items-center space-x-4 text-sm text-gray-400">
+            {debate.title && (
+              <p className="text-[#859289] mt-1">{debate.topic}</p>
+            )}
+            {debate.cwd && (
+              <div className="mt-2 flex items-center text-[#d3c6aa] text-xs font-mono bg-brand-bg bg-opacity-40 px-3 py-1.5 rounded border border-brand-border w-fit shadow-inner">
+                <svg className="w-3.5 h-3.5 mr-1.5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                <span className="opacity-60 mr-1 text-[#859289]">Session dir:</span> {debate.cwd}
+              </div>
+            )}
+            <div className="mt-3 flex items-center space-x-4 text-sm text-[#859289]">
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor}`}>
                 {debate.status}
               </span>
@@ -144,7 +157,7 @@ export function DebateView() {
           <div className="flex space-x-2">
             {debate.status === 'completed' && (
               <div className="relative group">
-                <button className="inline-flex items-center px-3 py-2 border border-gray-600 text-sm font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600">
+                <button className="inline-flex items-center px-3 py-2 border border-brand-border text-sm font-medium rounded-md text-[#d3c6aa] bg-brand-card hover:bg-brand-border">
                   Export
                   <svg
                     className="ml-2 h-4 w-4"
@@ -160,22 +173,22 @@ export function DebateView() {
                     />
                   </svg>
                 </button>
-                <div className="hidden group-hover:block absolute right-0 mt-2 w-48 bg-gray-700 rounded-md shadow-lg z-10 border border-gray-600">
+                <div className="hidden group-hover:block absolute right-0 mt-2 w-48 bg-brand-card rounded-md shadow-lg z-10 border border-brand-border">
                   <a
                     href={`/debates/${debate.id}/export/markdown`}
-                    className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600"
+                    className="block px-4 py-2 text-sm text-[#d3c6aa] hover:bg-brand-bg"
                   >
                     📝 Markdown
                   </a>
                   <a
                     href={`/debates/${debate.id}/export/pdf`}
-                    className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600"
+                    className="block px-4 py-2 text-sm text-[#d3c6aa] hover:bg-brand-bg"
                   >
                     📄 PDF
                   </a>
                   <a
                     href={`/debates/${debate.id}/export/json`}
-                    className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600"
+                    className="block px-4 py-2 text-sm text-[#d3c6aa] hover:bg-brand-bg"
                   >
                     📊 JSON
                   </a>
@@ -187,7 +200,7 @@ export function DebateView() {
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className="inline-flex items-center px-3 py-2 border border-red-600 text-sm font-medium rounded-md text-red-400 bg-gray-700 hover:bg-red-900 hover:text-red-300 disabled:opacity-50"
+                className="inline-flex items-center px-3 py-2 border border-brand-accent text-sm font-medium rounded-md text-brand-accent bg-brand-card hover:bg-brand-accent hover:text-brand-bg disabled:opacity-50"
               >
                 {deleting ? 'Deleting...' : 'Delete'}
               </button>
@@ -197,28 +210,28 @@ export function DebateView() {
 
         {/* Agents */}
         <div className="mt-6 grid grid-cols-2 gap-4">
-          <div className="border border-blue-700 rounded-lg p-4 bg-blue-900 bg-opacity-30">
-            <div className="font-medium text-blue-300 text-lg">{debate.agent_a.name}</div>
-            <div className="text-sm text-gray-400 mt-1">{debate.agent_a.persona}</div>
+          <div className="border border-brand-primary border-opacity-30 rounded-lg p-4 bg-brand-primary bg-opacity-5">
+            <div className="font-medium text-brand-primary text-lg">{debate.agent_a.name}</div>
+            <div className="text-sm text-[#859289] mt-1">{debate.agent_a.persona}</div>
           </div>
-          <div className="border border-green-700 rounded-lg p-4 bg-green-900 bg-opacity-30">
-            <div className="font-medium text-green-300 text-lg">{debate.agent_b.name}</div>
-            <div className="text-sm text-gray-400 mt-1">{debate.agent_b.persona}</div>
+          <div className="border border-brand-secondary border-opacity-30 rounded-lg p-4 bg-brand-secondary bg-opacity-5">
+            <div className="font-medium text-brand-secondary text-lg">{debate.agent_b.name}</div>
+            <div className="text-sm text-[#859289] mt-1">{debate.agent_b.persona}</div>
           </div>
         </div>
       </div>
 
       {/* Turns */}
       {turns.length === 0 && !streamingTurn ? (
-        <div className="animate-fadeIn bg-gradient-to-br from-gray-800 to-gray-900 shadow-2xl rounded-2xl p-20 text-center border border-gray-700 relative overflow-hidden">
+        <div className="animate-fadeIn bg-gradient-to-br from-brand-card to-brand-bg shadow-2xl rounded-2xl p-20 text-center border border-brand-border relative overflow-hidden">
           <div className="absolute inset-0 opacity-10">
-            <div className="absolute top-10 left-10 w-32 h-32 bg-blue-500 rounded-full blur-3xl" />
-            <div className="absolute bottom-10 right-10 w-32 h-32 bg-green-500 rounded-full blur-3xl" />
+            <div className="absolute top-10 left-10 w-32 h-32 bg-brand-primary rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-32 h-32 bg-brand-secondary rounded-full blur-3xl" />
           </div>
           <div className="relative z-10">
-            <div className="inline-block p-6 bg-gray-900 rounded-full mb-6 shadow-lg">
+            <div className="inline-block p-6 bg-brand-bg rounded-full mb-6 shadow-lg">
               <svg
-                className="h-20 w-20 text-blue-400 animate-pulse"
+                className="h-20 w-20 text-brand-primary animate-pulse"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -236,24 +249,24 @@ export function DebateView() {
               AI agents are analyzing the topic and formulating their arguments.
             </p>
             <div className="mt-8 flex justify-center gap-2">
-              <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce" />
+              <div className="w-3 h-3 bg-brand-primary rounded-full animate-bounce" />
               <div
-                className="w-3 h-3 bg-blue-400 rounded-full animate-bounce"
+                className="w-3 h-3 bg-indigo-400 rounded-full animate-bounce"
                 style={{ animationDelay: '0.15s' }}
               />
               <div
-                className="w-3 h-3 bg-blue-300 rounded-full animate-bounce"
+                className="w-3 h-3 bg-indigo-300 rounded-full animate-bounce"
                 style={{ animationDelay: '0.3s' }}
               />
             </div>
           </div>
         </div>
       ) : (
-        <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-gray-700 overflow-hidden">
-          <div className="bg-gray-900 bg-opacity-50 px-8 py-4 border-b border-gray-700">
+        <div className="bg-gradient-to-br from-brand-card to-brand-bg rounded-2xl border border-brand-border overflow-hidden">
+          <div className="bg-brand-bg bg-opacity-50 px-8 py-4 border-b border-brand-border">
             <h2 className="text-xl font-semibold text-white flex items-center gap-2">
               <svg
-                className="w-6 h-6 text-blue-400"
+                className="w-6 h-6 text-brand-primary"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -294,13 +307,13 @@ export function DebateView() {
       {/* Conclusion */}
       {debate.conclusion && (
         <div
-          className={`bg-gradient-to-br from-gray-800 via-gray-850 to-gray-900 shadow-2xl rounded-2xl p-10 border-2 ${
-            debate.conclusion.agreed ? 'border-green-500' : 'border-yellow-500'
+          className={`bg-gradient-to-br from-brand-card via-brand-card to-brand-bg shadow-2xl rounded-2xl p-10 border-2 ${
+            debate.conclusion.agreed ? 'border-brand-primary' : 'border-brand-secondary'
           } relative overflow-hidden`}
         >
           <div
             className={`absolute top-0 right-0 w-64 h-64 ${
-              debate.conclusion.agreed ? 'bg-green-500' : 'bg-yellow-500'
+              debate.conclusion.agreed ? 'bg-brand-primary' : 'bg-brand-secondary'
             } opacity-5 rounded-full blur-3xl`}
           />
 
@@ -308,20 +321,20 @@ export function DebateView() {
             <div className="flex items-center gap-4 mb-8">
               <div
                 className={`w-16 h-16 rounded-full ${
-                  debate.conclusion.agreed ? 'bg-green-500' : 'bg-yellow-500'
+                  debate.conclusion.agreed ? 'bg-brand-primary' : 'bg-brand-secondary'
                 } bg-opacity-20 flex items-center justify-center`}
               >
                 <span className="text-4xl">{debate.conclusion.agreed ? '🤝' : '⚔️'}</span>
               </div>
               <div>
-                <h2 className="text-3xl font-bold text-white">
+                <h2 className="text-3xl font-bold text-[#d3c6aa]">
                   {debate.conclusion.agreed
                     ? debate.conclusion.early_consensus
                       ? 'Consensus Reached Early!'
                       : 'Consensus Reached'
                     : 'No Consensus'}
                 </h2>
-                <p className="text-gray-400 mt-1">
+                <p className="text-[#859289] mt-1">
                   {debate.conclusion.agreed
                     ? 'Both agents found common ground'
                     : 'Agents maintained different viewpoints'}
@@ -329,10 +342,10 @@ export function DebateView() {
               </div>
             </div>
 
-            <div className="bg-gray-900 bg-opacity-30 rounded-xl p-8 border border-gray-700">
-              <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+            <div className="bg-brand-bg bg-opacity-30 rounded-xl p-8 border border-brand-border">
+              <h3 className="text-xl font-semibold text-[#d3c6aa] mb-4 flex items-center gap-2">
                 <svg
-                  className="w-6 h-6 text-blue-400"
+                  className="w-6 h-6 text-brand-primary"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -346,7 +359,11 @@ export function DebateView() {
                 </svg>
                 Summary
               </h3>
-              <p className="text-gray-200 text-lg leading-relaxed">{debate.conclusion.summary}</p>
+              <div className="text-[#d3c6aa] text-lg leading-relaxed prose prose-invert max-w-none prose-headings:text-[#d3c6aa] prose-strong:text-brand-secondary">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {debate.conclusion.summary}
+                </ReactMarkdown>
+              </div>
             </div>
           </div>
         </div>

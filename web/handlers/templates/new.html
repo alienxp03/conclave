@@ -1,21 +1,36 @@
 {{template "base" .}}
 
-{{define "title"}}dbate - AI Debate Tool{{end}}
+{{define "title"}}conclave - AI Debate Tool{{end}}
 
 {{define "content"}}
-<div class="min-h-[70vh] flex items-center justify-center">
-    <div class="max-w-4xl w-full mx-auto px-4">
-        <div class="mb-12 text-center">
-            <div class="mb-6">
-                <span class="text-6xl">🎭</span>
+<div class="min-h-[70vh] flex items-center justify-start">
+    <div class="max-w-4xl w-full px-4">
+        <div class="mb-12 text-left">
+            <div class="mb-6 flex justify-start">
+                <span class="text-blue-500">
+                    <svg class="w-16 h-16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.5997 2.37562 15.1116 3.04348 16.4522L2 22L7.54777 20.9565C8.88837 21.6244 10.4003 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M8 12H8.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M12 12H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M16 12H16.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </span>
             </div>
-            <h1 class="text-5xl font-bold text-white mb-4 leading-tight">What should we debate?</h1>
-            <p class="text-xl text-gray-400">Enter a question and watch AI agents discuss different perspectives</p>
+            <h1 class="text-4xl font-bold text-white mb-4 leading-tight">What should we debate?</h1>
+            <p class="text-lg text-gray-400">Enter a question and watch AI agents discuss different perspectives</p>
         </div>
 
         <form hx-post="/debates" hx-indicator=".loading-overlay" class="space-y-8">
         <!-- Topic -->
         <div>
+            {{if .CWD}}
+            <div class="mb-4 flex items-center text-gray-300 text-sm font-mono bg-gray-900 bg-opacity-50 px-4 py-2 rounded-lg border border-gray-600 w-fit mx-auto shadow-inner">
+                <svg class="w-4 h-4 mr-2 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                <span class="opacity-60 mr-1">Running in:</span> {{.CWD}}
+            </div>
+            {{end}}
             <textarea
                 id="topic"
                 name="topic"
