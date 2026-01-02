@@ -1,10 +1,10 @@
 {{define "base"}}
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-gray-900">
+<html lang="en" class="h-full bg-[#0f111a]">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{block "title" .}}dbate{{end}}</title>
+    <title>{{block "title" .}}conclave{{end}}</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <style>
@@ -32,8 +32,8 @@
 
         /* Animations */
         @keyframes pulse-border {
-            0%, 100% { border-color: #3b82f6; }
-            50% { border-color: #93c5fd; }
+            0%, 100% { border-color: #6366f1; }
+            50% { border-color: #818cf8; }
         }
         .polling {
             animation: pulse-border 2s infinite;
@@ -53,14 +53,14 @@
             width: 10px;
         }
         ::-webkit-scrollbar-track {
-            background: #1f2937;
+            background: #0f111a;
         }
         ::-webkit-scrollbar-thumb {
-            background: #4b5563;
+            background: #2a2f42;
             border-radius: 5px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: #6b7280;
+            background: #3f445e;
         }
 
         /* Better focus states */
@@ -77,18 +77,25 @@
         }
     </style>
 </head>
-<body class="h-full bg-gray-900 text-gray-100 flex flex-col min-h-screen" hx-boost="true">
-    <nav class="bg-gray-800 shadow-lg border-b border-gray-700 sticky top-0 z-50 backdrop-blur-sm bg-opacity-95">
+<body class="h-full bg-[#0f111a] text-gray-100 flex flex-col min-h-screen" hx-boost="true">
+    <nav class="bg-[#1a1d29] shadow-lg border-b border-[#2a2f42] sticky top-0 z-50 backdrop-blur-sm bg-opacity-95">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center">
                     <a href="/" class="flex items-center space-x-2 group">
-                        <span class="text-2xl transform transition-transform group-hover:scale-110">🎭</span>
-                        <span class="font-bold text-xl text-white">dbate</span>
+                        <span class="text-[#6366f1] transform transition-transform group-hover:scale-110">
+                            <svg class="w-8 h-8" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.5997 2.37562 15.1116 3.04348 16.4522L2 22L7.54777 20.9565C8.88837 21.6244 10.4003 22 12 22Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M8 12H8.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M12 12H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M16 12H16.01" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </span>
+                        <span class="font-bold text-xl text-white">conclave</span>
                     </a>
                 </div>
                 <div class="flex items-center space-x-4">
-                    <a href="/debates" class="text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-gray-700">
+                    <a href="/debates" class="text-gray-300 hover:text-white px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:bg-[#2a2f42]">
                         History
                     </a>
                 </div>
@@ -101,11 +108,11 @@
         {{block "content" .}}{{end}}
     </main>
 
-    <footer class="border-t border-gray-700 bg-gray-800 mt-auto">
+    <footer class="border-t border-[#2a2f42] bg-[#1a1d29] mt-auto">
         <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
             <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
                 <p class="text-gray-400 text-sm">
-                    dbate - AI-powered debate tool
+                    conclave - AI-powered debate tool
                 </p>
                 <div class="flex items-center gap-4 text-xs text-gray-500">
                     <a href="/new" class="hover:text-gray-300 transition-colors">New Debate</a>

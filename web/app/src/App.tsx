@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Navigation } from './components/Navigation';
 import { NewCouncil } from './pages/NewCouncil';
 import { CouncilView } from './pages/CouncilView';
+import { DebateView } from './pages/DebateView';
 import { History } from './pages/History';
 
 const queryClient = new QueryClient({
@@ -18,34 +19,33 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <div className="min-h-screen flex flex-col bg-gray-900">
+        <div className="min-h-screen flex bg-brand-bg text-[#d3c6aa]">
           <Navigation />
 
-          <main className="flex-1 max-w-7xl w-full mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <Routes>
-              <Route path="/" element={<NewCouncil />} />
-              <Route path="/councils/:id" element={<CouncilView />} />
-              <Route path="/history" element={<History />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </main>
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <main className="flex-1 overflow-y-auto p-4 md:p-8">
+              <div className="max-w-5xl mx-auto">
+                <Routes>
+                  <Route path="/" element={<NewCouncil />} />
+                  <Route path="/councils/:id" element={<CouncilView />} />
+                  <Route path="/debates/:id" element={<DebateView />} />
+                  <Route path="/history" element={<History />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </div>
+            </main>
 
-          <footer className="border-t border-gray-700 bg-gray-800 mt-auto">
-            <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-                <p className="text-gray-400 text-sm">dbate - AI-powered debate tool</p>
-                <div className="flex items-center gap-4 text-xs text-gray-500">
-                  <a href="/" className="hover:text-gray-300 transition-colors">
-                    New Debate
-                  </a>
+            <footer className="border-t border-brand-border bg-brand-bg py-4 px-8">
+              <div className="flex justify-between items-center">
+                <p className="text-[#859289] text-xs">conclave - AI-powered council & debate tool</p>
+                <div className="flex items-center gap-4 text-xs text-[#859289]">
+                  <a href="/" className="hover:text-brand-primary transition-colors">New Council</a>
                   <span>•</span>
-                  <a href="/history" className="hover:text-gray-300 transition-colors">
-                    History
-                  </a>
+                  <a href="/history" className="hover:text-brand-primary transition-colors">History</a>
                 </div>
               </div>
-            </div>
-          </footer>
+            </footer>
+          </div>
         </div>
       </BrowserRouter>
     </QueryClientProvider>

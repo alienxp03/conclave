@@ -2,11 +2,11 @@ package handlers
 
 import (
 	"io/fs"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
-	"github.com/alienxp03/dbate/web/app"
+	"github.com/alienxp03/conclave/web/app"
 )
 
 // serveSPA serves the React single-page application.
@@ -23,7 +23,7 @@ func (h *Handler) serveSPA(w http.ResponseWriter, r *http.Request) {
 	// Serve static files from dist
 	distFS, err := fs.Sub(app.Dist, "dist")
 	if err != nil {
-		log.Printf("Failed to get dist filesystem: %v", err)
+		slog.Error("Failed to get dist filesystem", "error", err)
 		http.NotFound(w, r)
 		return
 	}

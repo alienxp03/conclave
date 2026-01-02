@@ -26,7 +26,7 @@ provider[/model][:persona]
 
 ```bash
 # Minimal - 4 members, auto-assign personas
-dbate new "Should we adopt GraphQL?" --models claude,gemini,qwen,codex
+conclave new "Should we adopt GraphQL?" --models claude,gemini,qwen,codex
 
 # Output:
 Creating council with 4 members:
@@ -47,19 +47,19 @@ Council ID: a3f9d8c1
 ### Specify Personas
 
 ```bash
-dbate new "topic" --models claude:optimist,gemini:skeptic,qwen:pragmatist,codex:analyst
+conclave new "topic" --models claude:optimist,gemini:skeptic,qwen:pragmatist,codex:analyst
 ```
 
 ### Specify Models
 
 ```bash
-dbate new "topic" --models claude/opus,gemini/pro,qwen/max,codex/gpt4
+conclave new "topic" --models claude/opus,gemini/pro,qwen/max,codex/gpt4
 ```
 
 ### Full Control
 
 ```bash
-dbate new "topic" \
+conclave new "topic" \
   --models claude/opus:optimist,gemini/pro:skeptic,qwen/max:pragmatist,codex/gpt4:analyst \
   --chairman claude/opus
 ```
@@ -68,7 +68,7 @@ dbate new "topic" \
 
 ```bash
 # Some with models, some with personas, some with both
-dbate new "topic" --models claude/opus:optimist,gemini:skeptic,qwen/max,codex
+conclave new "topic" --models claude/opus:optimist,gemini:skeptic,qwen/max,codex
 ```
 
 ## Flags
@@ -107,9 +107,9 @@ dbate new "topic" --models claude/opus:optimist,gemini:skeptic,qwen/max,codex
 --no-run    # Create council but don't run (run manually later)
 
 # Example:
-dbate new "topic" --models claude,gemini,qwen --no-run
+conclave new "topic" --models claude,gemini,qwen --no-run
 # Council ID: abc123
-dbate run abc123   # Run it later
+conclave run abc123   # Run it later
 ```
 
 ### Future flags (extensibility)
@@ -191,7 +191,7 @@ var bestModels = map[string]string{
 ### List
 
 ```bash
-dbate list
+conclave list
 
 # Output:
 ID        Topic                          Members  Status      Created
@@ -202,7 +202,7 @@ b7e2c4f3  Microservices vs Monolith      3        in_progress 1 day ago
 ### Show
 
 ```bash
-dbate show <id>
+conclave show <id>
 
 # Output:
 Council: a3f9d8c1
@@ -273,22 +273,22 @@ cost identified by the Pragmatist is real and should be budgeted.
 ### Export
 
 ```bash
-dbate export <id> [format]
+conclave export <id> [format]
 
 # Formats: markdown (default), pdf, json
-dbate export a3f9d8c1 pdf
+conclave export a3f9d8c1 pdf
 ```
 
 ### Delete
 
 ```bash
-dbate delete <id>
+conclave delete <id>
 ```
 
 ### Run (if created with --no-run)
 
 ```bash
-dbate run <id>
+conclave run <id>
 ```
 
 ## Parsing Logic
@@ -341,12 +341,12 @@ func parseMemberSpec(spec string) (MemberSpec, error) {
 
 Old (2-agent debates):
 ```bash
-dbate new "topic" -a claude:optimist -b gemini:skeptic -s adversarial
+conclave new "topic" -a claude:optimist -b gemini:skeptic -s adversarial
 ```
 
 New (N-agent councils):
 ```bash
-dbate new "topic" --models claude:optimist,gemini:skeptic
+conclave new "topic" --models claude:optimist,gemini:skeptic
 ```
 
 More extensible with flags, scales to N agents naturally.
@@ -355,7 +355,7 @@ More extensible with flags, scales to N agents naturally.
 
 ```bash
 # Create council
-$ dbate new "Should we adopt Rust for backend services?" \
+$ conclave new "Should we adopt Rust for backend services?" \
     --models claude/opus:optimist,gemini/pro:skeptic,qwen:pragmatist,codex:analyst
 
 Creating council with 4 members...
@@ -367,17 +367,17 @@ Running council stages...
 Council ID: f3a8d9c2
 
 # View results
-$ dbate show f3a8d9c2
+$ conclave show f3a8d9c2
 
 [... full output ...]
 
 # Export as PDF
-$ dbate export f3a8d9c2 pdf
+$ conclave export f3a8d9c2 pdf
 
 Exported to: council-f3a8d9c2.pdf
 
 # List all councils
-$ dbate list
+$ conclave list
 
 ID        Topic                          Members  Status      Created
 f3a8d9c2  Should we adopt Rust...        4        completed   5 min ago
@@ -388,12 +388,12 @@ a3f9d8c1  Should we adopt GraphQL?       4        completed   2 hours ago
 
 ```bash
 # Create custom persona
-$ dbate persona create security_expert \
+$ conclave persona create security_expert \
   --description "Focuses on security implications" \
   --prompt "You are a security expert. Analyze everything from a security perspective..."
 
 # Use in council
-$ dbate new "API design patterns" \
+$ conclave new "API design patterns" \
     --models claude:security_expert,gemini:optimist,qwen:pragmatist
 ```
 
@@ -401,7 +401,7 @@ $ dbate new "API design patterns" \
 
 ```bash
 # List available providers
-$ dbate providers
+$ conclave providers
 
 Available providers:
 ✓ claude  (models: sonnet, opus, haiku)
@@ -410,7 +410,7 @@ Available providers:
 ✓ codex   (models: gpt4, gpt35)
 
 # Check specific provider
-$ dbate providers claude
+$ conclave providers claude
 
 Provider: claude
 Display name: Anthropic Claude
@@ -425,22 +425,22 @@ Timeout: 5m
 **Simple patterns:**
 ```bash
 # Minimal
-dbate new "topic" --models claude,gemini,qwen
+conclave new "topic" --models claude,gemini,qwen
 
 # With personas
-dbate new "topic" --models claude:optimist,gemini:skeptic,qwen:pragmatist
+conclave new "topic" --models claude:optimist,gemini:skeptic,qwen:pragmatist
 
 # With models
-dbate new "topic" --models claude/opus,gemini/pro,qwen/max
+conclave new "topic" --models claude/opus,gemini/pro,qwen/max
 
 # Full control
-dbate new "topic" \
+conclave new "topic" \
   --models claude/opus:optimist,gemini/pro:skeptic,qwen/max:pragmatist \
   --chairman claude/opus
 
 # View and export
-dbate show <id>
-dbate export <id> pdf
+conclave show <id>
+conclave export <id> pdf
 ```
 
 **Extensible with flags. No complexity unless you need it.**

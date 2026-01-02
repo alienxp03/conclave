@@ -34,11 +34,12 @@ export interface Conclusion {
 
 export interface Debate {
   id: string;
+  title: string;
   topic: string;
+  cwd: string;
   agent_a: Agent;
   agent_b: Agent;
   status: DebateStatus;
-  mode: 'automatic' | 'turn_by_turn';
   style: string;
   total_turns: number;
   turn_count: number;
@@ -47,6 +48,21 @@ export interface Debate {
   updated_at: string;
   completed_at?: string;
   conclusion?: Conclusion;
+}
+
+export interface DebateSummary {
+  id: string;
+  title: string;
+  topic: string;
+  cwd: string;
+  status: DebateStatus;
+  style: string;
+  agent_a: string;
+  agent_b: string;
+  turn_count: number;
+  read_only: boolean;
+  created_at: string;
+  type?: 'debate' | 'council';
 }
 
 export interface Provider {
@@ -77,14 +93,15 @@ export interface CreateDebateRequest {
   agent_b_model: string;
   agent_b_persona: string;
   style: string;
-  mode: 'automatic' | 'turn_by_turn';
   max_turns: number;
   auto_run?: boolean;
 }
 
 export interface CouncilSummary {
   id: string;
+  title: string;
   topic: string;
+  cwd: string;
   status: DebateStatus;
   member_count: number;
   created_at: string;
@@ -110,7 +127,9 @@ export interface CreateCouncilRequest {
 
 export interface Council {
   id: string;
+  title: string;
   topic: string;
+  cwd: string;
   members: Agent[];
   chairman: Agent;
   status: DebateStatus;
@@ -118,6 +137,10 @@ export interface Council {
   created_at: string;
   updated_at: string;
   completed_at?: string;
+}
+
+export interface SystemInfo {
+  cwd: string;
 }
 
 export interface CouncilResponse {

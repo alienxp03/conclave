@@ -1,3 +1,5 @@
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { Turn, Debate } from '../types';
 
 interface TurnCardProps {
@@ -12,16 +14,16 @@ export function TurnCard({ turn, debate, isStreaming = false }: TurnCardProps) {
 
   // Use explicit classes for Tailwind purge
   const avatarClasses = isAgentA
-    ? 'w-12 h-12 rounded-full flex items-center justify-center shadow-lg bg-gradient-to-br from-blue-600 to-blue-700'
-    : 'w-12 h-12 rounded-full flex items-center justify-center shadow-lg bg-gradient-to-br from-green-600 to-green-700';
+    ? 'w-12 h-12 rounded-full flex items-center justify-center shadow-lg bg-gradient-to-br from-brand-primary to-[#8fa173]'
+    : 'w-12 h-12 rounded-full flex items-center justify-center shadow-lg bg-gradient-to-br from-brand-secondary to-[#c6ab70]';
 
   const nameClasses = isAgentA
-    ? 'font-bold text-lg text-blue-300'
-    : 'font-bold text-lg text-green-300';
+    ? 'font-bold text-lg text-brand-primary'
+    : 'font-bold text-lg text-brand-secondary';
 
   const borderClasses = isAgentA
-    ? 'ml-15 bg-gray-800 bg-opacity-50 rounded-xl p-6 border border-blue-900 border-opacity-50 group-hover:shadow-xl transition-shadow'
-    : 'ml-15 bg-gray-800 bg-opacity-50 rounded-xl p-6 border border-green-900 border-opacity-50 group-hover:shadow-xl transition-shadow';
+    ? 'ml-15 bg-brand-card bg-opacity-40 rounded-xl p-6 border border-brand-primary border-opacity-20 group-hover:shadow-xl transition-shadow'
+    : 'ml-15 bg-brand-card bg-opacity-40 rounded-xl p-6 border border-brand-secondary border-opacity-20 group-hover:shadow-xl transition-shadow';
 
   return (
     <div className={`animate-fadeIn group ${isStreaming ? 'opacity-80' : ''}`}>
@@ -46,8 +48,10 @@ export function TurnCard({ turn, debate, isStreaming = false }: TurnCardProps) {
 
       {/* Argument content */}
       <div className={borderClasses}>
-        <div className="text-gray-200 leading-relaxed text-base whitespace-pre-wrap">
-          {turn.content}
+        <div className="text-gray-200 leading-relaxed text-base prose prose-invert max-w-none">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {turn.content}
+          </ReactMarkdown>
           {isStreaming && <span className="inline-block w-2 h-5 bg-gray-400 ml-1 animate-pulse" />}
         </div>
       </div>

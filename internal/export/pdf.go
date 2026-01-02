@@ -7,7 +7,7 @@ import (
 
 	"github.com/jung-kurt/gofpdf"
 
-	"github.com/alienxp03/dbate/internal/core"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // PDFExporter exports debates to PDF format.
@@ -147,7 +147,7 @@ func (e *PDFExporter) Export(debate *core.Debate, turns []*core.Turn, w io.Write
 	// Footer
 	pdf.SetY(-15)
 	pdf.SetFont("Arial", "I", 8)
-	pdf.CellFormat(0, 10, "Exported from dbate", "", 0, "C", false, 0, "")
+	pdf.CellFormat(0, 10, "Exported from conclave", "", 0, "C", false, 0, "")
 
 	return pdf.Output(w)
 }

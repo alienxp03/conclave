@@ -7,20 +7,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/core"
-	"github.com/alienxp03/dbate/internal/council"
-	"github.com/alienxp03/dbate/internal/engine"
-	"github.com/alienxp03/dbate/internal/export"
-	"github.com/alienxp03/dbate/internal/persona"
-	"github.com/alienxp03/dbate/internal/provider"
-	"github.com/alienxp03/dbate/internal/storage"
-	"github.com/alienxp03/dbate/internal/style"
+	"github.com/alienxp03/conclave/internal/core"
+	"github.com/alienxp03/conclave/internal/council"
+	"github.com/alienxp03/conclave/internal/engine"
+	"github.com/alienxp03/conclave/internal/export"
+	"github.com/alienxp03/conclave/internal/persona"
+	"github.com/alienxp03/conclave/internal/provider"
+	"github.com/alienxp03/conclave/internal/storage"
+	"github.com/alienxp03/conclave/internal/style"
 )
 
 //go:embed templates/*.html
@@ -72,7 +73,8 @@ func New(store storage.Storage, registry *provider.Registry) *Handler {
 
 	tmpl, err := template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/*.html")
 	if err != nil {
-		log.Fatalf("Failed to parse templates: %v", err)
+		slog.Error("Failed to parse templates", "error", err)
+		panic(err)
 	}
 
 	return &Handler{
@@ -90,16 +92,17 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/debates", h.handleAPIDebates)
 	mux.HandleFunc("GET /api/debates/{id}", h.handleAPIDebate)
 	mux.HandleFunc("GET /api/debates/{id}/stream", h.handleDebateStream)
-	
+
 	// Council routes
 	mux.HandleFunc("GET /api/councils", h.handleAPIListCouncils)
 	mux.HandleFunc("POST /api/councils", h.handleAPICreateCouncil)
 	mux.HandleFunc("GET /api/councils/{id}", h.handleAPIGetCouncil)
 	mux.HandleFunc("GET /api/councils/{id}/stream", h.handleCouncilStream)
-	
+
 	// New API routes
 	mux.HandleFunc("GET /api/personas", h.handleAPIListPersonas)
 	mux.HandleFunc("GET /api/styles", h.handleAPIListStyles)
+	mux.HandleFunc("GET /api/system/info", h.handleAPISystemInfo)
 	mux.HandleFunc("POST /api/debates", h.handleAPICreateDebate)
 	mux.HandleFunc("DELETE /api/debates/{id}", h.handleAPIDeleteDebate)
 
@@ -136,11 +139,13 @@ func (h *Handler) handleDebatesList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	cwd, _ := os.Getwd()
 	data := map[string]interface{}{
 		"Debates":   debates,
 		"Providers": h.registry.Available(),
 		"Personas":  h.getAllPersonas(),
 		"Styles":    h.getAllStyles(),
+		"CWD":       cwd,
 	}
 
 	h.render(w, "index.html", data)
@@ -167,10 +172,12 @@ func (h *Handler) handleDebateView(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleNewDebateForm(w http.ResponseWriter, r *http.Request) {
+	cwd, _ := os.Getwd()
 	data := map[string]interface{}{
 		"Providers": h.registry.Available(),
 		"Personas":  h.getAllPersonas(),
 		"Styles":    h.getAllStyles(),
+		"CWD":       cwd,
 	}
 	h.render(w, "new.html", data)
 }
@@ -238,12 +245,6 @@ func (h *Handler) handleCreateDebate(w http.ResponseWriter, r *http.Request) {
 		maxTurns = 5
 	}
 
-	// Parse mode
-	mode := core.ModeAutomatic
-	if r.FormValue("mode") == "turn_by_turn" {
-		mode = core.ModeTurnByTurn
-	}
-
 	config := core.NewDebateConfig{
 		Topic:          r.FormValue("topic"),
 		AgentAProvider: r.FormValue("agent_a_provider"),
@@ -253,7 +254,6 @@ func (h *Handler) handleCreateDebate(w http.ResponseWriter, r *http.Request) {
 		AgentBModel:    r.FormValue("agent_b_model"),
 		AgentBPersona:  r.FormValue("agent_b_persona"),
 		Style:          r.FormValue("style"),
-		Mode:           mode,
 		MaxTurns:       maxTurns,
 	}
 
@@ -266,7 +266,7 @@ func (h *Handler) handleCreateDebate(w http.ResponseWriter, r *http.Request) {
 	// Check if auto-run is requested
 	autoRun := r.FormValue("auto_run") == "on"
 
-	if autoRun && mode == core.ModeAutomatic {
+	if autoRun {
 		// Run debate in background
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -372,7 +372,7 @@ func (h *Handler) handleExportDebate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 
 	if err := exporter.Export(debate, turns, w); err != nil {
-		log.Printf("Export error: %v", err)
+		slog.Error("Export failed", "debate_id", id, "format", format, "error", err)
 		http.Error(w, "Export failed", http.StatusInternalServerError)
 	}
 }
@@ -476,6 +476,13 @@ func (h *Handler) handleAPIListStyles(w http.ResponseWriter, r *http.Request) {
 	h.json(w, h.getAllStyles())
 }
 
+func (h *Handler) handleAPISystemInfo(w http.ResponseWriter, r *http.Request) {
+	cwd, _ := os.Getwd()
+	h.json(w, map[string]string{
+		"cwd": cwd,
+	})
+}
+
 func (h *Handler) handleAPICreateDebate(w http.ResponseWriter, r *http.Request) {
 	type CreateRequest struct {
 		core.NewDebateConfig
@@ -499,7 +506,7 @@ func (h *Handler) handleAPICreateDebate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if req.AutoRun && req.Mode == core.ModeAutomatic {
+	if req.AutoRun {
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
@@ -552,19 +559,19 @@ func (h *Handler) handleAPIListCouncils(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) handleAPIGetCouncil(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	
+
 	council, err := h.storage.GetCouncil(id)
 	if err != nil {
 		h.jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	responses, err := h.storage.GetResponses(id)
 	if err != nil {
 		h.jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	rankings, err := h.storage.GetRankings(id)
 	if err != nil {
 		h.jsonError(w, err.Error(), http.StatusInternalServerError)
@@ -619,7 +626,8 @@ func (h *Handler) handleAPICreateCouncil(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	
+	slog.Debug("New council stream connection", "id", id, "remote_addr", r.RemoteAddr)
+
 	// Prepare SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -628,6 +636,7 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
+		slog.Error("Streaming unsupported: ResponseWriter does not implement http.Flusher")
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
@@ -635,50 +644,97 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 	// Helper to send events
 	sendEvent := func(event string, data interface{}) {
 		jsonData, _ := json.Marshal(data)
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
+		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData); err != nil {
+			slog.Error("Failed to write SSE event", "event", event, "error", err)
+			return
+		}
 		flusher.Flush()
+		slog.Debug("Sent SSE event", "event", event, "data_len", len(jsonData))
 	}
 
 	councilEngine := council.New(h.storage, h.registry)
-	
+
 	// Get council to make sure it exists
 	c, err := h.storage.GetCouncil(id)
 	if err != nil {
+		slog.Error("Council not found for stream", "id", id, "error", err)
 		sendEvent("error", map[string]string{"message": err.Error()})
 		return
 	}
-	
+
+	// Send current state immediately
+	responses, _ := h.storage.GetResponses(id)
+	for _, r := range responses {
+		sendEvent("response_collected", map[string]interface{}{
+			"agent_id": r.MemberID,
+			"content":  r.Content,
+		})
+	}
+
+	rankings, _ := h.storage.GetRankings(id)
+	for _, r := range rankings {
+		sendEvent("ranking_collected", map[string]interface{}{
+			"agent_id": r.ReviewerID,
+			"content":  r.Reasoning,
+		})
+	}
+
+	if c.Synthesis != "" {
+		sendEvent("synthesis_complete", map[string]string{
+			"synthesis": c.Synthesis,
+		})
+	}
+
+	// Determine completed stages from existing data
+	if len(responses) == len(c.Members) {
+		sendEvent("stage_complete", map[string]interface{}{"stage": 1})
+	}
+	if len(rankings) == len(c.Members) {
+		sendEvent("stage_complete", map[string]interface{}{"stage": 2})
+	}
+
 	if c.Status == core.StatusCompleted {
+		slog.Debug("Council already completed", "id", id)
 		sendEvent("complete", c)
 		return
 	}
-	
-	// If it's already running (or failed/pending and we want to restart/continue), 
+
+	// If it's already running (or failed/pending and we want to restart/continue),
 	// we assume the client is connecting to watch progress.
-	// NOTE: In a real system, we'd tap into the running process. 
-	// Here, for simplicity, if it's pending, we start it. 
+	// NOTE: In a real system, we'd tap into the running process.
+	// Here, for simplicity, if it's pending, we start it.
 	// If it's in_progress, we might need a way to attach.
 	// For now, let's assume this endpoint triggers the run if pending.
-	
+
 	if c.Status == core.StatusPending || c.Status == core.StatusFailed {
+		slog.Info("Starting council execution via stream", "id", id)
 		callbacks := &council.CouncilCallbacks{
 			OnResponseCollected: func(agent core.Agent, response string) {
+				slog.Debug("Response collected callback", "agent", agent.Name)
 				sendEvent("response_collected", map[string]interface{}{
-					"agent_id": agent.ID,
+					"agent_id":   agent.ID,
 					"agent_name": agent.Name,
-					"content": response,
+					"content":    response,
 				})
 			},
 			OnRankingCollected: func(agent core.Agent, ranking string) {
+				slog.Debug("Ranking collected callback", "agent", agent.Name)
 				sendEvent("ranking_collected", map[string]interface{}{
-					"agent_id": agent.ID,
+					"agent_id":   agent.ID,
 					"agent_name": agent.Name,
-					"content": ranking,
+					"content":    ranking,
 				})
 			},
 			OnSynthesisComplete: func(synthesis string) {
+				slog.Debug("Synthesis complete callback")
 				sendEvent("synthesis_complete", map[string]string{
 					"synthesis": synthesis,
+				})
+			},
+			OnStageComplete: func(stage int) {
+				slog.Debug("Stage complete callback", "stage", stage)
+				sendEvent("stage_complete", map[string]interface{}{
+					"stage": stage,
 				})
 			},
 		}
@@ -686,17 +742,87 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
 		defer cancel()
 
+		// Monitor context cancellation
+		go func() {
+			<-ctx.Done()
+			slog.Debug("Stream context done", "id", id, "error", ctx.Err())
+		}()
+
 		err := councilEngine.RunCouncilWithCallbacks(ctx, c, callbacks)
 		if err != nil {
+			slog.Error("Council execution failed", "id", id, "error", err)
 			sendEvent("error", map[string]string{"message": err.Error()})
 			return
 		}
-		
+
+		slog.Info("Council execution completed successfully", "id", id)
 		sendEvent("complete", c)
-	} else {
-		// If in progress, we can't easily attach in this simple architecture without a pub/sub.
-		// For now, we'll send a message saying "Running in background, please refresh".
-		sendEvent("info", map[string]string{"message": "Council is running in background"})
+	} else if c.Status == core.StatusInProgress {
+		// If in progress, poll for updates so late-joining clients get them
+		slog.Info("Attaching to in-progress council via polling", "id", id)
+
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+
+		lastResponseCount := len(responses)
+		lastRankingCount := len(rankings)
+		hasSynthesis := c.Synthesis != ""
+
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-ticker.C:
+				currCouncil, _ := h.storage.GetCouncil(id)
+				currResponses, _ := h.storage.GetResponses(id)
+				currRankings, _ := h.storage.GetRankings(id)
+
+				// Send new responses
+				if len(currResponses) > lastResponseCount {
+					for i := lastResponseCount; i < len(currResponses); i++ {
+						sendEvent("response_collected", map[string]interface{}{
+							"agent_id": currResponses[i].MemberID,
+							"content":  currResponses[i].Content,
+						})
+					}
+					lastResponseCount = len(currResponses)
+					if lastResponseCount == len(c.Members) {
+						sendEvent("stage_complete", map[string]interface{}{"stage": 1})
+					}
+				}
+
+				// Send new rankings
+				if len(currRankings) > lastRankingCount {
+					for i := lastRankingCount; i < len(currRankings); i++ {
+						sendEvent("ranking_collected", map[string]interface{}{
+							"agent_id": currRankings[i].ReviewerID,
+							"content":  currRankings[i].Reasoning,
+						})
+					}
+					lastRankingCount = len(currRankings)
+					if lastRankingCount == len(c.Members) {
+						sendEvent("stage_complete", map[string]interface{}{"stage": 2})
+					}
+				}
+
+				// Send synthesis
+				if !hasSynthesis && currCouncil.Synthesis != "" {
+					sendEvent("synthesis_complete", map[string]string{
+						"synthesis": currCouncil.Synthesis,
+					})
+					hasSynthesis = true
+				}
+
+				if currCouncil.Status == core.StatusCompleted {
+					sendEvent("complete", currCouncil)
+					return
+				}
+				if currCouncil.Status == core.StatusFailed {
+					sendEvent("error", map[string]string{"message": "Council failed"})
+					return
+				}
+			}
+		}
 	}
 }
 
@@ -705,7 +831,7 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) render(w http.ResponseWriter, name string, data interface{}) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := h.templates.ExecuteTemplate(w, name, data); err != nil {
-		log.Printf("Template error: %v", err)
+		slog.Error("Template error", "template", name, "error", err)
 		http.Error(w, "Template error", http.StatusInternalServerError)
 	}
 }

@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-gray-900 text-gray-100 min-h-screen;
+    @apply bg-brand-bg text-[#d3c6aa] min-h-screen font-sans;
   }
 }
 

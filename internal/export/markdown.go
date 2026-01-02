@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/alienxp03/dbate/internal/core"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // MarkdownExporter exports debates to Markdown format.
@@ -91,7 +91,7 @@ func (e *MarkdownExporter) Export(debate *core.Debate, turns []*core.Turn, w io.
 
 	// Footer
 	sb.WriteString("---\n\n")
-	sb.WriteString("*Exported from dbate*\n")
+	sb.WriteString("*Exported from conclave*\n")
 
 	_, err := w.Write([]byte(sb.String()))
 	return err

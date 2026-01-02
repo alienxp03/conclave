@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"github.com/alienxp03/dbate/internal/core"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // JSONExporter exports debates to JSON format.

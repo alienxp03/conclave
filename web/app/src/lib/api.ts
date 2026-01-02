@@ -1,8 +1,14 @@
-import type { Debate, Provider, CreateDebateRequest, Turn, Persona, Style, Council, CouncilResponse, CouncilRanking, CreateCouncilRequest, CouncilSummary } from '../types';
+import type { Debate, Provider, CreateDebateRequest, Turn, Persona, Style, Council, CouncilResponse, CouncilRanking, CreateCouncilRequest, CouncilSummary, SystemInfo } from '../types';
 
 const API_BASE = '/api';
 
 class ApiClient {
+  async getSystemInfo(): Promise<SystemInfo> {
+    const response = await fetch(`${API_BASE}/system/info`);
+    if (!response.ok) throw new Error('Failed to fetch system info');
+    return response.json();
+  }
+
   async getProviders(): Promise<Provider[]> {
     const response = await fetch(`${API_BASE}/providers`);
     if (!response.ok) throw new Error('Failed to fetch providers');

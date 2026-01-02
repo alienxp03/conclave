@@ -1,11 +1,11 @@
-# LLM Council vs dbate: Architecture Comparison
+# LLM Council vs conclave: Architecture Comparison
 
 ## Executive Summary
 
-**llm-council** (by Andrej Karpathy) and **dbate** are both multi-LLM orchestration systems but solve fundamentally different problems:
+**llm-council** (by Andrej Karpathy) and **conclave** are both multi-LLM orchestration systems but solve fundamentally different problems:
 
 - **llm-council**: Democratic consensus through peer review and synthesis
-- **dbate**: Structured debate through persona-driven agents with turn-by-turn exchanges
+- **conclave**: Structured debate through persona-driven agents with turn-by-turn exchanges
 
 ---
 
@@ -36,7 +36,7 @@ Final Answer
 - Flat file storage (JSON conversations)
 - Streaming Server-Sent Events (SSE)
 
-### dbate: Debate Orchestration Model
+### conclave: Debate Orchestration Model
 
 **Philosophy**: Explore different perspectives through structured argumentation between agents with distinct personalities.
 
@@ -67,7 +67,7 @@ Voting + Conclusion Summary
 
 ### Communication Model
 
-| Aspect | llm-council | dbate |
+| Aspect | llm-council | conclave |
 |--------|-------------|-------|
 | **API Access** | Centralized via OpenRouter | Direct CLI tool execution |
 | **Models** | Any OpenRouter-supported model | claude, codex, gemini, qwen CLIs |
@@ -84,7 +84,7 @@ responses = await asyncio.gather(*[
 ])
 ```
 
-**dbate approach**:
+**conclave approach**:
 ```go
 // Sequential turn execution with CLI
 cmd := exec.CommandContext(ctx, "claude", prompt)
@@ -93,13 +93,13 @@ output, err := cmd.CombinedOutput()
 
 **Trade-offs**:
 - ✅ llm-council: Faster (parallel), consistent API interface
-- ✅ dbate: No API costs, works with local models, offline-capable
+- ✅ conclave: No API costs, works with local models, offline-capable
 
 ---
 
 ### Storage & Persistence
 
-| Feature | llm-council | dbate |
+| Feature | llm-council | conclave |
 |---------|-------------|-------|
 | **Backend** | Flat JSON files | SQLite database |
 | **Schema** | Unstructured conversations | Structured (debates, turns, personas, styles) |
@@ -115,7 +115,7 @@ data/conversations/
   └── ...
 ```
 
-**dbate storage**:
+**conclave storage**:
 ```sql
 CREATE TABLE debates (...);
 CREATE TABLE turns (...);
@@ -127,7 +127,7 @@ SELECT * FROM debates WHERE topic LIKE '%AI%' ORDER BY created_at DESC;
 
 **Trade-offs**:
 - ✅ llm-council: Simple, portable, easy to inspect
-- ✅ dbate: Queryable, transactional, better at scale
+- ✅ conclave: Queryable, transactional, better at scale
 
 ---
 
@@ -184,7 +184,7 @@ async def stage3_synthesize_final(query, stage1, stage2):
 - Chairman role for synthesis
 - No back-and-forth (single pass)
 
-#### dbate: Turn-by-Turn Debate
+#### conclave: Turn-by-Turn Debate
 
 **Turn Execution**:
 ```go
@@ -248,7 +248,7 @@ for turnNumber := 0; turnNumber < debate.MaxTurns * 2; turnNumber++ {
 
 **Trade-offs**:
 - ✅ llm-council: Comprehensive evaluation, reduces groupthink
-- ✅ dbate: Deeper exploration through dialogue, more nuanced interaction
+- ✅ conclave: Deeper exploration through dialogue, more nuanced interaction
 
 ---
 
@@ -287,7 +287,7 @@ Peer rankings: {aggregated_rankings}
 Provide a balanced final answer reflecting collective wisdom.
 ```
 
-#### dbate: Template-Based Dynamic Prompts
+#### conclave: Template-Based Dynamic Prompts
 
 **Prompt Formula**:
 ```
@@ -328,13 +328,13 @@ type TemplateData struct {
 
 **Trade-offs**:
 - ✅ llm-council: Focused, structured evaluation
-- ✅ dbate: Highly customizable, supports complex debate dynamics
+- ✅ conclave: Highly customizable, supports complex debate dynamics
 
 ---
 
 ## 3. Feature Comparison Matrix
 
-| Feature | llm-council | dbate |
+| Feature | llm-council | conclave |
 |---------|-------------|-------|
 | **Multi-model support** | ✅ Via OpenRouter | ✅ Via CLI tools |
 | **Parallel execution** | ✅ Stages 1 & 2 | ❌ Sequential turns |
@@ -398,7 +398,7 @@ async def stream_response():
 
 ---
 
-### dbate Advantages
+### conclave Advantages
 
 #### 1. **Rich Persona System**
 - 6 builtin personas with distinct thinking styles
@@ -447,7 +447,7 @@ func checkConsensus(turns []Turn) bool {
 - No API costs (uses local CLI tools)
 - Works offline (if CLIs support it)
 - Integrates with existing workflows
-- **Example**: `dbate new "topic" | tee debate.txt`
+- **Example**: `conclave new "topic" | tee debate.txt`
 
 #### 6. **SQLite Persistence**
 - Queryable history
@@ -458,9 +458,9 @@ func checkConsensus(turns []Turn) bool {
 
 #### 7. **Export Flexibility**
 ```bash
-dbate export <id> markdown  # Clean Markdown
-dbate export <id> pdf       # Formatted PDF
-dbate export <id> json      # Machine-readable
+conclave export <id> markdown  # Clean Markdown
+conclave export <id> pdf       # Formatted PDF
+conclave export <id> json      # Machine-readable
 ```
 - Multiple output formats
 - Share debates easily
@@ -468,7 +468,7 @@ dbate export <id> json      # Machine-readable
 
 #### 8. **Step-by-Step Mode**
 ```bash
-dbate new "topic" --step
+conclave new "topic" --step
 # Press Enter to advance turn
 # Type 'q' to quit
 ```
@@ -483,11 +483,11 @@ dbate new "topic" --step
 
 ---
 
-## 5. Architectural Improvements dbate Can Learn
+## 5. Architectural Improvements conclave Can Learn
 
 ### 1. **Parallel Initial Responses** ⭐⭐⭐
 
-**Current dbate**: Sequential turns (A → B → A → B...)
+**Current conclave**: Sequential turns (A → B → A → B...)
 **llm-council**: All models respond simultaneously in Stage 1
 
 **Potential Enhancement**:
@@ -533,7 +533,7 @@ func (e *Engine) CollectOpeningStatements(ctx context.Context, debate *core.Deba
 
 ### 2. **Peer Evaluation / Self-Reflection** ⭐⭐⭐⭐
 
-**Current dbate**: Voting happens only at conclusion
+**Current conclave**: Voting happens only at conclusion
 **llm-council**: Continuous peer evaluation and ranking
 
 **Potential Enhancement**:
@@ -603,7 +603,7 @@ func (e *Engine) evaluateArguments(ctx context.Context, evaluator Agent, targetT
 
 ### 3. **Anonymous Turn Presentation** ⭐⭐
 
-**Current dbate**: Agents know opponent identity
+**Current conclave**: Agents know opponent identity
 **llm-council**: Anonymous peer review prevents bias
 
 **Potential Enhancement**:
@@ -636,7 +636,7 @@ func (e *Engine) buildPrompt(debate *core.Debate, agent Agent, turns []Turn) str
 
 ### 4. **Streaming / Progressive Updates** ⭐⭐⭐
 
-**Current dbate**: Callback hooks per turn (not web-streaming)
+**Current conclave**: Callback hooks per turn (not web-streaming)
 **llm-council**: Server-Sent Events for real-time updates
 
 **Potential Enhancement**:
@@ -682,7 +682,7 @@ func (h *Handler) StreamDebate(w http.ResponseWriter, r *http.Request) {
 
 ### 5. **Aggregate Ranking System** ⭐⭐⭐⭐
 
-**Current dbate**: Simple binary voting (AGREE/DISAGREE)
+**Current conclave**: Simple binary voting (AGREE/DISAGREE)
 **llm-council**: Numerical rankings with averaging
 
 **Potential Enhancement**:
@@ -758,7 +758,7 @@ func (e *Engine) getRankings(ctx context.Context, agent Agent, turns []Turn) map
 
 ### 6. **Multi-Agent Synthesis** ⭐⭐
 
-**Current dbate**: Two agents vote, then neutral summary
+**Current conclave**: Two agents vote, then neutral summary
 **llm-council**: Chairman model synthesizes all inputs
 
 **Potential Enhancement**:
@@ -845,7 +845,7 @@ func (e *Engine) GenerateSynthesis(ctx context.Context, debate *core.Debate) str
 
 ## 8. Key Takeaways
 
-### What dbate does better:
+### What conclave does better:
 - ✅ **Richer interaction model** (turn-by-turn with context)
 - ✅ **Persona & style flexibility** (customizable debate formats)
 - ✅ **CLI-first design** (cost-effective, offline-capable)
@@ -861,7 +861,7 @@ func (e *Engine) GenerateSynthesis(ctx context.Context, debate *core.Debate) str
 
 ### Best hybrid approach:
 ```
-dbate's architecture
+conclave's architecture
 + llm-council's parallelism (opening statements)
 + llm-council's peer review (post-debate analysis)
 + llm-council's ranking system (argument quality scoring)
@@ -873,15 +873,15 @@ dbate's architecture
 
 ## 9. Conclusion
 
-**llm-council** and **dbate** solve different problems:
+**llm-council** and **conclave** solve different problems:
 
 - **llm-council**: Optimized for **quality** (peer review, synthesis, democratic consensus)
-- **dbate**: Optimized for **exploration** (personas, styles, turn-by-turn dialogue)
+- **conclave**: Optimized for **exploration** (personas, styles, turn-by-turn dialogue)
 
-The most valuable improvements for dbate are:
+The most valuable improvements for conclave are:
 1. **Peer evaluation system** - Adds depth without changing core model
 2. **Aggregate rankings** - Quantifies argument quality
 3. **Parallel opening statements** - Performance boost
 4. **Streaming SSE** - Modern web experience
 
-These enhancements preserve dbate's unique strengths (personas, styles, CLI) while adopting llm-council's best ideas (peer review, rankings, synthesis).
+These enhancements preserve conclave's unique strengths (personas, styles, CLI) while adopting llm-council's best ideas (peer review, rankings, synthesis).

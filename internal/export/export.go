@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/core"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 // Format represents an export format.

@@ -2,7 +2,7 @@
 
 ## The Question
 
-Should dbate:
+Should conclave:
 1. **Keep debate styles** (optimized for 2 agents)
 2. **Switch to peer review** (N-agent council like llm-council)
 3. **Support both** (hybrid system)
@@ -131,10 +131,10 @@ Focus on **2-agent debates** but add **post-debate analysis**:
 
 ```bash
 # During: Deep 2-agent dialogue
-dbate new "topic" -a claude:optimist -b gemini:skeptic -s adversarial
+conclave new "topic" -a claude:optimist -b gemini:skeptic -s adversarial
 
 # After: N-agent analysis
-dbate analyze <id> --reviewers claude/opus,gemini/pro,qwen/max
+conclave analyze <id> --reviewers claude/opus,gemini/pro,qwen/max
 ```
 
 **Implementation**:
@@ -183,13 +183,13 @@ func (e *Engine) AnalyzeDebate(debate *Debate, reviewers []Agent) (*Analysis, er
 **CLI**:
 ```bash
 # Standard 2-agent debate
-dbate new "topic" -a claude:skeptic -b gemini:optimist
+conclave new "topic" -a claude:skeptic -b gemini:optimist
 
 # Add 3rd party analysis
-dbate analyze <id> --add-reviewer qwen/max
+conclave analyze <id> --add-reviewer qwen/max
 
 # Or analyze with full council
-dbate analyze <id> --reviewers claude/opus,gemini/pro,qwen/max,codex/gpt4
+conclave analyze <id> --reviewers claude/opus,gemini/pro,qwen/max,codex/gpt4
 ```
 
 ---
@@ -223,7 +223,7 @@ You'd be competing directly with llm-council in their strength while abandoning 
 
 **Mode 1: Debate (2-agent, turn-by-turn)**
 ```bash
-dbate new "topic" --mode debate \
+conclave new "topic" --mode debate \
   -a claude:optimist \
   -b gemini:skeptic \
   -s adversarial
@@ -231,7 +231,7 @@ dbate new "topic" --mode debate \
 
 **Mode 2: Council (N-agent, peer review)**
 ```bash
-dbate new "topic" --mode council \
+conclave new "topic" --mode council \
   --models claude/opus,gemini/pro,qwen/max,codex/gpt4 \
   --chairman claude/opus
 ```
@@ -302,13 +302,13 @@ Keep **debate as core**, add **council as analysis layer**:
 ### Example workflow:
 ```bash
 # 1. Run debate (core feature)
-dbate new "Should we use microservices?" \
+conclave new "Should we use microservices?" \
   -a claude:pragmatist \
   -b gemini:visionary \
   -s analytical
 
 # 2. Optionally add council review
-dbate review <id> \
+conclave review <id> \
   --reviewers claude/opus,gemini/pro,qwen/max \
   --chairman claude/opus
 
@@ -343,14 +343,14 @@ dbate review <id> \
 ### CLI commands:
 ```bash
 # Core debate commands (unchanged)
-dbate new <topic>
-dbate list
-dbate show <id>
+conclave new <topic>
+conclave list
+conclave show <id>
 
 # New analysis commands
-dbate review <id> [options]         # Add council review
-dbate review <id> --show            # Show existing review
-dbate rank <id>                     # Show turn rankings
+conclave review <id> [options]         # Add council review
+conclave review <id> --show            # Show existing review
+conclave rank <id>                     # Show turn rankings
 ```
 
 ---
@@ -385,7 +385,7 @@ dbate rank <id>                     # Show turn rankings
 
 **Phase 1: Core review command (1 week)**
 ```bash
-dbate review <id> --reviewers claude,gemini,qwen
+conclave review <id> --reviewers claude,gemini,qwen
 ```
 - Read debate transcript
 - Ask each reviewer to rank turns
@@ -394,7 +394,7 @@ dbate review <id> --reviewers claude,gemini,qwen
 
 **Phase 2: Synthesis (1 week)**
 ```bash
-dbate review <id> --chairman claude/opus
+conclave review <id> --chairman claude/opus
 ```
 - Use chairman model to synthesize
 - Consider rankings + debate content
@@ -402,9 +402,9 @@ dbate review <id> --chairman claude/opus
 
 **Phase 3: CLI polish (3 days)**
 ```bash
-dbate rank <id>              # Show turn rankings table
-dbate review <id> --show     # Display existing review
-dbate export <id> --with-review  # Include in PDF
+conclave rank <id>              # Show turn rankings table
+conclave review <id> --show     # Display existing review
+conclave export <id> --with-review  # Include in PDF
 ```
 
 **Phase 4: Web UI (optional, 3 days)**
@@ -421,7 +421,7 @@ If you want to test the concept first:
 **Minimal viable feature:**
 ```bash
 # Just add ranking, no full council
-dbate rank <id> --reviewer claude/opus
+conclave rank <id> --reviewer claude/opus
 
 # Output:
 # Turn Rankings by claude/opus:
@@ -442,13 +442,13 @@ Then evolve based on user feedback:
 
 ```bash
 # Your core product (unique)
-dbate new "topic" -a claude:skeptic -b gemini:optimist -s adversarial
+conclave new "topic" -a claude:skeptic -b gemini:optimist -s adversarial
 
 # Optional enhancement (breadth)
-dbate review <debate-id> --reviewers claude,gemini,qwen,codex
+conclave review <debate-id> --reviewers claude,gemini,qwen,codex
 
 # Export everything
-dbate export <debate-id> pdf --with-review
+conclave export <debate-id> pdf --with-review
 ```
 
 This gives you:

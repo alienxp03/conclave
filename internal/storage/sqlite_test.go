@@ -6,12 +6,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/alienxp03/dbate/internal/core"
+	"github.com/alienxp03/conclave/internal/core"
 )
 
 func TestSQLiteStorage(t *testing.T) {
 	// Create temp directory
-	tmpDir, err := os.MkdirTemp("", "dbate-test-*")
+	tmpDir, err := os.MkdirTemp("", "conclave-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
