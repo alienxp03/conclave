@@ -7,12 +7,12 @@ import (
 
 // Response represents a provider's response with metadata.
 type Response struct {
-	Content   string         `json:"content"`
-	Model     string         `json:"model,omitempty"`
-	Provider  string         `json:"provider,omitempty"`
-	Duration  time.Duration  `json:"duration,omitempty"`
-	Metadata  *ResponseMeta  `json:"metadata,omitempty"`
-	Raw       string         `json:"-"` // Raw response for debugging
+	Content  string        `json:"content"`
+	Model    string        `json:"model,omitempty"`
+	Provider string        `json:"provider,omitempty"`
+	Duration time.Duration `json:"duration,omitempty"`
+	Metadata *ResponseMeta `json:"metadata,omitempty"`
+	Raw      string        `json:"-"` // Raw response for debugging
 }
 
 // ResponseMeta contains additional response metadata.
@@ -85,6 +85,13 @@ func ParseClaudeJSON(data string) (*Response, error) {
 
 // GeminiJSONResponse represents Gemini CLI JSON output.
 type GeminiJSONResponse struct {
+	Response string `json:"response,omitempty"` // Main response text from Gemini CLI
+	Stats    *struct {
+		Models map[string]interface{} `json:"models,omitempty"`
+		Tools  map[string]interface{} `json:"tools,omitempty"`
+		Files  map[string]interface{} `json:"files,omitempty"`
+	} `json:"stats,omitempty"`
+	// Fallback fields for different Gemini API formats
 	Candidates []struct {
 		Content struct {
 			Parts []struct {
@@ -115,8 +122,14 @@ func ParseGeminiJSON(data string) (*Response, error) {
 		Raw: data,
 	}
 
-	// Extract content
-	if len(raw.Candidates) > 0 && len(raw.Candidates[0].Content.Parts) > 0 {
+	// Extract content from Gemini CLI format (priority)
+	if raw.Response != "" {
+		resp.Content = raw.Response
+	} else if raw.Text != "" {
+		// Fallback: simpler response format
+		resp.Content = raw.Text
+	} else if len(raw.Candidates) > 0 && len(raw.Candidates[0].Content.Parts) > 0 {
+		// Fallback: traditional Gemini API format
 		for _, part := range raw.Candidates[0].Content.Parts {
 			resp.Content += part.Text
 		}
@@ -125,11 +138,18 @@ func ParseGeminiJSON(data string) (*Response, error) {
 				StopReason: raw.Candidates[0].FinishReason,
 			}
 		}
-	} else if raw.Text != "" {
-		resp.Content = raw.Text
 	}
 
-	// Extract metadata
+	// Extract metadata from stats if available (Gemini CLI format)
+	if raw.Stats != nil && raw.Stats.Models != nil {
+		// Parse token counts from models stats if present
+		// The stats structure contains model-specific data with tokens
+		if resp.Metadata == nil {
+			resp.Metadata = &ResponseMeta{}
+		}
+	}
+
+	// Fallback metadata extraction from usageMetadata
 	if raw.UsageMetadata != nil {
 		if resp.Metadata == nil {
 			resp.Metadata = &ResponseMeta{}
@@ -142,29 +162,16 @@ func ParseGeminiJSON(data string) (*Response, error) {
 	return resp, nil
 }
 
-// CodexJSONResponse represents OpenAI/Codex CLI JSON output.
+// CodexJSONResponse represents OpenAI/Codex CLI structured output.
 type CodexJSONResponse struct {
-	ID      string `json:"id,omitempty"`
-	Model   string `json:"model,omitempty"`
-	Choices []struct {
-		Message struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		} `json:"message"`
-		FinishReason string `json:"finish_reason,omitempty"`
-	} `json:"choices,omitempty"`
-	Usage *struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
-	} `json:"usage,omitempty"`
-	Content string `json:"content,omitempty"` // For simpler responses
+	Response string `json:"response,omitempty"`
 }
 
-// ParseCodexJSON parses OpenAI/Codex CLI JSON output.
+// ParseCodexJSON parses OpenAI/Codex CLI structured JSON output.
 func ParseCodexJSON(data string) (*Response, error) {
 	var raw CodexJSONResponse
 	if err := json.Unmarshal([]byte(data), &raw); err != nil {
+		// If not JSON, return as plain text
 		return &Response{
 			Content: data,
 			Raw:     data,
@@ -172,28 +179,8 @@ func ParseCodexJSON(data string) (*Response, error) {
 	}
 
 	resp := &Response{
-		Model: raw.Model,
-		Raw:   data,
-	}
-
-	// Extract content
-	if len(raw.Choices) > 0 {
-		resp.Content = raw.Choices[0].Message.Content
-		resp.Metadata = &ResponseMeta{
-			StopReason: raw.Choices[0].FinishReason,
-		}
-	} else if raw.Content != "" {
-		resp.Content = raw.Content
-	}
-
-	// Extract metadata
-	if raw.Usage != nil {
-		if resp.Metadata == nil {
-			resp.Metadata = &ResponseMeta{}
-		}
-		resp.Metadata.InputTokens = raw.Usage.PromptTokens
-		resp.Metadata.OutputTokens = raw.Usage.CompletionTokens
-		resp.Metadata.TotalTokens = raw.Usage.TotalTokens
+		Content: raw.Response,
+		Raw:     data,
 	}
 
 	return resp, nil

@@ -93,16 +93,16 @@ type DebateSummary struct {
 
 // NewDebateConfig holds the configuration for creating a new debate.
 type NewDebateConfig struct {
-	Topic          string
-	AgentAProvider string
-	AgentAModel    string
-	AgentAPersona  string
-	AgentBProvider string
-	AgentBModel    string
-	AgentBPersona  string
-	Style          string
-	Mode           DebateMode
-	MaxTurns       int
+	Topic          string     `json:"topic"`
+	AgentAProvider string     `json:"agent_a_provider"`
+	AgentAModel    string     `json:"agent_a_model"`
+	AgentAPersona  string     `json:"agent_a_persona"`
+	AgentBProvider string     `json:"agent_b_provider"`
+	AgentBModel    string     `json:"agent_b_model"`
+	AgentBPersona  string     `json:"agent_b_persona"`
+	Style          string     `json:"style"`
+	Mode           DebateMode `json:"mode"`
+	MaxTurns       int        `json:"max_turns"`
 }
 
 // IsModifiable returns true if the debate can be modified.

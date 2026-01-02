@@ -2,10 +2,21 @@ package provider
 
 import (
 	"context"
+	"os"
 	"time"
 
 	"github.com/alienxp03/dbate/internal/config"
 )
+
+// CodexResponseSchema is the JSON schema for Codex structured output
+const CodexResponseSchema = `{
+  "type": "object",
+  "properties": {
+    "response": { "type": "string" }
+  },
+  "required": ["response"],
+  "additionalProperties": false
+}`
 
 // CodexProvider implements the Provider interface for OpenAI Codex CLI.
 type CodexProvider struct {
@@ -40,11 +51,16 @@ func (p *CodexProvider) Generate(ctx context.Context, prompt string) (string, er
 
 // GenerateWithModel sends a prompt with a specific model.
 func (p *CodexProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
-	args := []string{}
+	args := []string{"exec"}
 
-	// Use JSON output format for structured responses
+	// Use structured JSON output with schema
 	if p.useJSON {
-		args = append(args, "--output-format", "json")
+		schemaPath, err := p.createSchemaFile()
+		if err != nil {
+			return "", err
+		}
+		defer os.Remove(schemaPath)
+		args = append(args, "--output-schema", schemaPath)
 	}
 
 	// Add model flag if specified
@@ -76,8 +92,15 @@ func (p *CodexProvider) GenerateWithModel(ctx context.Context, prompt, model str
 
 // GenerateWithResponse sends a prompt and returns a structured response with metadata.
 func (p *CodexProvider) GenerateWithResponse(ctx context.Context, prompt, model string) (*Response, error) {
-	args := []string{}
-	args = append(args, "--output-format", "json")
+	args := []string{"exec"}
+
+	schemaPath, err := p.createSchemaFile()
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(schemaPath)
+
+	args = append(args, "--output-schema", schemaPath)
 
 	if model != "" {
 		args = append(args, "--model", model)
@@ -103,4 +126,23 @@ func (p *CodexProvider) GenerateWithResponse(ctx context.Context, prompt, model 
 	resp.Duration = time.Since(start)
 	resp.Provider = p.name
 	return resp, nil
+}
+
+// createSchemaFile writes the response schema to a temporary file
+func (p *CodexProvider) createSchemaFile() (string, error) {
+	tmpDir := os.TempDir()
+
+	f, err := os.CreateTemp(tmpDir, "codex-schema-")
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	_, err = f.WriteString(CodexResponseSchema)
+	if err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+
+	return f.Name(), nil
 }

@@ -1,4 +1,4 @@
-.PHONY: build test clean run serve help install install-user install-gopath uninstall
+.PHONY: build test clean run serve help install uninstall build-frontend dev-frontend
 
 # Binary names
 CLI_BINARY=dbate
@@ -6,8 +6,14 @@ SERVER_BINARY=dbate-server
 
 # Build directory
 BUILD_DIR=bin
+WEB_DIR=web/app
 
 # Go parameters
+# Use mise-managed Go if available (fixes GOROOT mismatch)
+MISE_GO_ROOT := $(shell mise where go 2>/dev/null)
+ifdef MISE_GO_ROOT
+  export GOROOT := $(MISE_GO_ROOT)
+endif
 GOCMD=go
 GOBUILD=$(GOCMD) build
 GOTEST=$(GOCMD) test
@@ -20,7 +26,7 @@ LDFLAGS=-ldflags "-s -w"
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
-build: ## Build CLI and server binaries
+build: build-frontend ## Build CLI and server binaries with frontend
 	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(CLI_BINARY) ./cmd/dbate/
 	$(GOBUILD) $(LDFLAGS) -o $(BUILD_DIR)/$(SERVER_BINARY) ./cmd/server/
@@ -45,6 +51,15 @@ clean: ## Clean build artifacts
 	$(GOCLEAN)
 	rm -rf $(BUILD_DIR)
 	rm -f coverage.out coverage.html
+	rm -rf $(WEB_DIR)/dist
+
+build-frontend: ## Build React frontend
+	@echo "Building React frontend..."
+	@cd $(WEB_DIR) && npm run build
+	@echo "Frontend built successfully"
+
+dev-frontend: ## Run React frontend in development mode
+	@cd $(WEB_DIR) && npm run dev
 
 run: build-cli ## Build and show CLI help
 	./$(BUILD_DIR)/$(CLI_BINARY) --help
@@ -52,32 +67,11 @@ run: build-cli ## Build and show CLI help
 serve: build-cli ## Build and start web server
 	./$(BUILD_DIR)/$(CLI_BINARY) serve
 
-install: build ## Install dbate to /usr/local/bin (may require sudo)
-	@if [ -w /usr/local/bin ]; then \
-		cp $(BUILD_DIR)/$(CLI_BINARY) /usr/local/bin/; \
-		echo "Installed $(CLI_BINARY) to /usr/local/bin/"; \
-	else \
-		echo "Installing to /usr/local/bin requires sudo"; \
-		sudo cp $(BUILD_DIR)/$(CLI_BINARY) /usr/local/bin/; \
-		echo "Installed $(CLI_BINARY) to /usr/local/bin/"; \
-	fi
-
-install-user: build ## Install dbate to ~/.local/bin (no sudo)
+install: build ## Install dbate to ~/.local/bin (no sudo)
 	@mkdir -p ~/.local/bin
 	cp $(BUILD_DIR)/$(CLI_BINARY) ~/.local/bin/
 	@echo "Installed $(CLI_BINARY) to ~/.local/bin/"
 	@echo "Ensure ~/.local/bin is in your PATH"
-
-install-gopath: build ## Install dbate to GOPATH/bin
-	@if [ -z "$(GOPATH)" ]; then \
-		echo "GOPATH not set, using ~/go/bin"; \
-		mkdir -p ~/go/bin; \
-		cp $(BUILD_DIR)/$(CLI_BINARY) ~/go/bin/; \
-		echo "Installed $(CLI_BINARY) to ~/go/bin/"; \
-	else \
-		cp $(BUILD_DIR)/$(CLI_BINARY) $(GOPATH)/bin/; \
-		echo "Installed $(CLI_BINARY) to $(GOPATH)/bin/"; \
-	fi
 
 uninstall: ## Remove dbate from common locations
 	@rm -f /usr/local/bin/$(CLI_BINARY) 2>/dev/null || true

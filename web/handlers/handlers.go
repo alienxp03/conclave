@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/alienxp03/dbate/internal/core"
+	"github.com/alienxp03/dbate/internal/council"
 	"github.com/alienxp03/dbate/internal/engine"
 	"github.com/alienxp03/dbate/internal/export"
 	"github.com/alienxp03/dbate/internal/persona"
@@ -84,18 +85,25 @@ func New(store storage.Storage, registry *provider.Registry) *Handler {
 
 // RegisterRoutes registers all HTTP routes.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	// Pages
-	mux.HandleFunc("GET /", h.handleIndex)
-	mux.HandleFunc("GET /debates", h.handleDebatesList)
-	mux.HandleFunc("GET /debates/{id}", h.handleDebateView)
-	mux.HandleFunc("GET /new", h.handleNewDebateForm)
+	// API routes (must be registered first for proper routing)
+	mux.HandleFunc("GET /api/providers", h.handleAPIProviders)
+	mux.HandleFunc("GET /api/debates", h.handleAPIDebates)
+	mux.HandleFunc("GET /api/debates/{id}", h.handleAPIDebate)
+	mux.HandleFunc("GET /api/debates/{id}/stream", h.handleDebateStream)
+	
+	// Council routes
+	mux.HandleFunc("GET /api/councils", h.handleAPIListCouncils)
+	mux.HandleFunc("POST /api/councils", h.handleAPICreateCouncil)
+	mux.HandleFunc("GET /api/councils/{id}", h.handleAPIGetCouncil)
+	mux.HandleFunc("GET /api/councils/{id}/stream", h.handleCouncilStream)
+	
+	// New API routes
+	mux.HandleFunc("GET /api/personas", h.handleAPIListPersonas)
+	mux.HandleFunc("GET /api/styles", h.handleAPIListStyles)
+	mux.HandleFunc("POST /api/debates", h.handleAPICreateDebate)
+	mux.HandleFunc("DELETE /api/debates/{id}", h.handleAPIDeleteDebate)
 
-	// HTMX partials
-	mux.HandleFunc("GET /partials/debates", h.handleDebatesPartial)
-	mux.HandleFunc("GET /partials/debate/{id}", h.handleDebatePartial)
-	mux.HandleFunc("GET /partials/debate/{id}/turns", h.handleDebateTurnsPartial)
-
-	// Actions
+	// Actions (POST/DELETE endpoints)
 	mux.HandleFunc("POST /debates", h.handleCreateDebate)
 	mux.HandleFunc("POST /debates/{id}/run", h.handleRunDebate)
 	mux.HandleFunc("POST /debates/{id}/next", h.handleNextTurn)
@@ -103,13 +111,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /debates/{id}/unlock", h.handleUnlockDebate)
 	mux.HandleFunc("DELETE /debates/{id}", h.handleDeleteDebate)
 
-	// Export
+	// Export endpoints
 	mux.HandleFunc("GET /debates/{id}/export/{format}", h.handleExportDebate)
 
-	// API
-	mux.HandleFunc("GET /api/providers", h.handleAPIProviders)
-	mux.HandleFunc("GET /api/debates", h.handleAPIDebates)
-	mux.HandleFunc("GET /api/debates/{id}", h.handleAPIDebate)
+	// React SPA (catch-all, must be last)
+	h.RegisterSPARoutes(mux)
 }
 
 // Page handlers
@@ -119,7 +125,8 @@ func (h *Handler) handleIndex(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/debates", http.StatusSeeOther)
+	// Go directly to new debate page
+	http.Redirect(w, r, "/new", http.StatusSeeOther)
 }
 
 func (h *Handler) handleDebatesList(w http.ResponseWriter, r *http.Request) {
@@ -413,6 +420,9 @@ func (h *Handler) handleAPIProviders(w http.ResponseWriter, r *http.Request) {
 	result := make([]map[string]interface{}, 0, len(providers))
 
 	for _, p := range providers {
+		if p.Name() == "mock" {
+			continue
+		}
 		result = append(result, map[string]interface{}{
 			"name":         p.Name(),
 			"display_name": p.DisplayName(),
@@ -458,6 +468,238 @@ func (h *Handler) handleAPIDebate(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) handleAPIListPersonas(w http.ResponseWriter, r *http.Request) {
+	h.json(w, h.getAllPersonas())
+}
+
+func (h *Handler) handleAPIListStyles(w http.ResponseWriter, r *http.Request) {
+	h.json(w, h.getAllStyles())
+}
+
+func (h *Handler) handleAPICreateDebate(w http.ResponseWriter, r *http.Request) {
+	type CreateRequest struct {
+		core.NewDebateConfig
+		AutoRun bool `json:"auto_run"`
+	}
+
+	var req CreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Topic == "" {
+		h.jsonError(w, "topic is required", http.StatusBadRequest)
+		return
+	}
+
+	debate, err := h.engine.CreateDebate(r.Context(), req.NewDebateConfig)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if req.AutoRun && req.Mode == core.ModeAutomatic {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			h.engine.RunDebate(ctx, debate.ID, nil)
+		}()
+	}
+
+	h.json(w, debate)
+}
+
+func (h *Handler) handleAPIDeleteDebate(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	debate, err := h.engine.GetDebate(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if debate != nil && debate.ReadOnly {
+		h.jsonError(w, "Cannot delete a read-only debate", http.StatusForbidden)
+		return
+	}
+
+	if err := h.engine.DeleteDebate(id); err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Council Handlers
+
+func (h *Handler) handleAPIListCouncils(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	if limit <= 0 {
+		limit = 20
+	}
+
+	councils, err := h.storage.ListCouncils(limit, offset)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.json(w, councils)
+}
+
+func (h *Handler) handleAPIGetCouncil(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	
+	council, err := h.storage.GetCouncil(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	responses, err := h.storage.GetResponses(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	rankings, err := h.storage.GetRankings(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.json(w, map[string]interface{}{
+		"council":   council,
+		"responses": responses,
+		"rankings":  rankings,
+	})
+}
+
+func (h *Handler) handleAPICreateCouncil(w http.ResponseWriter, r *http.Request) {
+	type CreateRequest struct {
+		core.NewCouncilConfig
+		AutoRun bool `json:"auto_run"`
+	}
+
+	var req CreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Topic == "" {
+		h.jsonError(w, "topic is required", http.StatusBadRequest)
+		return
+	}
+	if len(req.Members) < 2 {
+		h.jsonError(w, "at least 2 members are required", http.StatusBadRequest)
+		return
+	}
+
+	councilEngine := council.New(h.storage, h.registry)
+	c, err := councilEngine.CreateCouncil(r.Context(), req.NewCouncilConfig)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if req.AutoRun {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			councilEngine.RunCouncil(ctx, c)
+		}()
+	}
+
+	h.json(w, c)
+}
+
+func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	
+	// Prepare SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	// Helper to send events
+	sendEvent := func(event string, data interface{}) {
+		jsonData, _ := json.Marshal(data)
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, jsonData)
+		flusher.Flush()
+	}
+
+	councilEngine := council.New(h.storage, h.registry)
+	
+	// Get council to make sure it exists
+	c, err := h.storage.GetCouncil(id)
+	if err != nil {
+		sendEvent("error", map[string]string{"message": err.Error()})
+		return
+	}
+	
+	if c.Status == core.StatusCompleted {
+		sendEvent("complete", c)
+		return
+	}
+	
+	// If it's already running (or failed/pending and we want to restart/continue), 
+	// we assume the client is connecting to watch progress.
+	// NOTE: In a real system, we'd tap into the running process. 
+	// Here, for simplicity, if it's pending, we start it. 
+	// If it's in_progress, we might need a way to attach.
+	// For now, let's assume this endpoint triggers the run if pending.
+	
+	if c.Status == core.StatusPending || c.Status == core.StatusFailed {
+		callbacks := &council.CouncilCallbacks{
+			OnResponseCollected: func(agent core.Agent, response string) {
+				sendEvent("response_collected", map[string]interface{}{
+					"agent_id": agent.ID,
+					"agent_name": agent.Name,
+					"content": response,
+				})
+			},
+			OnRankingCollected: func(agent core.Agent, ranking string) {
+				sendEvent("ranking_collected", map[string]interface{}{
+					"agent_id": agent.ID,
+					"agent_name": agent.Name,
+					"content": ranking,
+				})
+			},
+			OnSynthesisComplete: func(synthesis string) {
+				sendEvent("synthesis_complete", map[string]string{
+					"synthesis": synthesis,
+				})
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Minute)
+		defer cancel()
+
+		err := councilEngine.RunCouncilWithCallbacks(ctx, c, callbacks)
+		if err != nil {
+			sendEvent("error", map[string]string{"message": err.Error()})
+			return
+		}
+		
+		sendEvent("complete", c)
+	} else {
+		// If in progress, we can't easily attach in this simple architecture without a pub/sub.
+		// For now, we'll send a message saying "Running in background, please refresh".
+		sendEvent("info", map[string]string{"message": "Council is running in background"})
+	}
+}
+
 // Helper methods
 
 func (h *Handler) render(w http.ResponseWriter, name string, data interface{}) {
@@ -483,7 +725,17 @@ func (h *Handler) htmxError(w http.ResponseWriter, message string) {
 	w.Header().Set("HX-Retarget", "#error-container")
 	w.Header().Set("HX-Reswap", "innerHTML")
 	w.WriteHeader(http.StatusBadRequest)
-	w.Write([]byte(`<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">` + template.HTMLEscapeString(message) + `</div>`))
+	w.Write([]byte(`<div class="animate-fadeIn bg-red-900 bg-opacity-50 border-2 border-red-500 text-red-200 px-6 py-4 rounded-xl mb-4 shadow-lg">
+		<div class="flex items-start">
+			<svg class="w-6 h-6 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+			</svg>
+			<div>
+				<h3 class="font-semibold mb-1">Error</h3>
+				<p class="text-sm">` + template.HTMLEscapeString(message) + `</p>
+			</div>
+		</div>
+	</div>`))
 }
 
 // getAllPersonas returns all personas (builtin + custom from storage).

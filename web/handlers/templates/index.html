@@ -1,12 +1,15 @@
 {{template "base" .}}
 
-{{define "title"}}Debates - dbate{{end}}
+{{define "title"}}History - dbate{{end}}
 
 {{define "content"}}
-<div class="space-y-6">
-    <div class="flex justify-between items-center">
-        <h1 class="text-2xl font-bold text-gray-900">Debates</h1>
-        <a href="/new" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium inline-flex items-center">
+<div class="space-y-8">
+    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+            <h1 class="text-4xl font-bold text-white mb-2">Your Debates</h1>
+            <p class="text-gray-400">Browse and revisit your AI discussions</p>
+        </div>
+        <a href="/new" class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white px-6 py-3 rounded-xl text-base font-semibold inline-flex items-center shadow-lg transform transition-all duration-200 hover:scale-105">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
@@ -15,71 +18,63 @@
     </div>
 
     {{if not .Debates}}
-    <div class="text-center py-12">
-        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-        </svg>
-        <h3 class="mt-2 text-sm font-medium text-gray-900">No debates yet</h3>
-        <p class="mt-1 text-sm text-gray-500">Get started by creating a new debate.</p>
-        <div class="mt-6">
-            <a href="/new" class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700">
-                Start a Debate
-            </a>
+    <div class="text-center py-20 bg-gray-800 rounded-2xl border border-gray-700">
+        <div class="inline-block p-6 bg-gray-900 rounded-full mb-6">
+            <svg class="h-20 w-20 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+            </svg>
         </div>
+        <h3 class="text-2xl font-semibold text-white mb-2">No debates yet</h3>
+        <p class="text-gray-400 mb-8 max-w-md mx-auto">Start your first AI-powered debate and watch different perspectives unfold</p>
+        <a href="/new" class="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl font-semibold shadow-lg transform transition-all duration-200 hover:scale-105">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Start Your First Debate
+        </a>
     </div>
     {{else}}
-    <div class="bg-white shadow-sm rounded-lg overflow-hidden">
-        <table class="min-w-full divide-y divide-gray-200">
-            <thead class="bg-gray-50">
-                <tr>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Topic</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Agents</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Style</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mode</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Turns</th>
-                    <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                    <th scope="col" class="relative px-6 py-3"><span class="sr-only">Actions</span></th>
-                </tr>
-            </thead>
-            <tbody class="bg-white divide-y divide-gray-200">
-                {{range .Debates}}
-                <tr class="hover:bg-gray-50 cursor-pointer" onclick="window.location='/debates/{{.ID}}'">
-                    <td class="px-6 py-4">
-                        <div class="flex items-center space-x-2">
-                            <span class="text-sm font-medium text-gray-900">{{truncate .Topic 45}}</span>
-                            {{if .ReadOnly}}<span class="text-yellow-600" title="Read-only">🔒</span>{{end}}
-                        </div>
-                        <div class="text-xs text-gray-500">{{shortID .ID}}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <div class="text-sm text-gray-900">{{.AgentA}}</div>
-                        <div class="text-sm text-gray-500">vs {{.AgentB}}</div>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="text-sm text-gray-900 capitalize">{{.Style}}</span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="text-xs text-gray-500 capitalize">{{.Mode}}</span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full {{statusColor .Status}}">
-                            {{.Status}}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {{.TurnCount}}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+    <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {{range .Debates}}
+        <a href="/debates/{{.ID}}" class="block group">
+            <div class="bg-gray-800 border border-gray-700 rounded-xl p-6 hover:border-blue-500 hover:shadow-xl transition-all duration-200 h-full flex flex-col">
+                <div class="flex items-start justify-between mb-4">
+                    <span class="px-3 py-1 rounded-full text-xs font-semibold {{statusColor .Status}}">
+                        {{.Status}}
+                    </span>
+                    {{if .ReadOnly}}
+                    <span class="text-yellow-400" title="Read-only">🔒</span>
+                    {{end}}
+                </div>
+
+                <h3 class="text-lg font-semibold text-white mb-3 group-hover:text-blue-400 transition-colors line-clamp-2">
+                    {{.Topic}}
+                </h3>
+
+                <div class="mt-auto space-y-3">
+                    <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-400">Turns</span>
+                        <span class="text-white font-medium">{{.TurnCount}}</span>
+                    </div>
+
+                    <div class="flex items-center gap-2 text-xs text-gray-500">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
                         {{formatTime .CreatedAt}}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <a href="/debates/{{.ID}}" class="text-blue-600 hover:text-blue-900">View</a>
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
+                    </div>
+
+                    <div class="pt-3 border-t border-gray-700">
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="text-blue-400">{{.AgentA}}</span>
+                            <span class="text-gray-600">vs</span>
+                            <span class="text-green-400">{{.AgentB}}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </a>
+        {{end}}
     </div>
     {{end}}
 </div>

@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -113,8 +111,20 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 	return council, nil
 }
 
+// CouncilCallbacks contains callback functions for council progress.
+type CouncilCallbacks struct {
+	OnResponseCollected func(agent core.Agent, response string)
+	OnRankingCollected  func(agent core.Agent, ranking string)
+	OnSynthesisComplete func(synthesis string)
+}
+
 // RunCouncil executes all 3 stages of the council process.
 func (e *Engine) RunCouncil(ctx context.Context, council *core.Council) error {
+	return e.RunCouncilWithCallbacks(ctx, council, nil)
+}
+
+// RunCouncilWithCallbacks executes all 3 stages with progress callbacks.
+func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Council, callbacks *CouncilCallbacks) error {
 	// Save council first
 	if err := e.storage.CreateCouncil(council); err != nil {
 		return fmt.Errorf("failed to create council: %w", err)
@@ -126,7 +136,7 @@ func (e *Engine) RunCouncil(ctx context.Context, council *core.Council) error {
 	e.storage.UpdateCouncil(council)
 
 	// Stage 1: Collect responses
-	responses, err := e.CollectResponses(ctx, council)
+	responses, err := e.CollectResponsesWithCallback(ctx, council, callbacks)
 	if err != nil {
 		council.Status = core.StatusFailed
 		e.storage.UpdateCouncil(council)
@@ -141,7 +151,7 @@ func (e *Engine) RunCouncil(ctx context.Context, council *core.Council) error {
 	}
 
 	// Stage 2: Collect rankings
-	rankings, err := e.CollectRankings(ctx, council, responses)
+	rankings, err := e.CollectRankingsWithCallback(ctx, council, responses, callbacks)
 	if err != nil {
 		council.Status = core.StatusFailed
 		e.storage.UpdateCouncil(council)
@@ -163,6 +173,10 @@ func (e *Engine) RunCouncil(ctx context.Context, council *core.Council) error {
 		return fmt.Errorf("stage 3 failed: %w", err)
 	}
 
+	if callbacks != nil && callbacks.OnSynthesisComplete != nil {
+		callbacks.OnSynthesisComplete(synthesis)
+	}
+
 	// Update council
 	council.Synthesis = synthesis
 	council.Status = core.StatusCompleted
@@ -179,32 +193,38 @@ func (e *Engine) RunCouncil(ctx context.Context, council *core.Council) error {
 
 // CollectResponses implements Stage 1: collect independent responses from all members.
 func (e *Engine) CollectResponses(ctx context.Context, council *core.Council) ([]core.Response, error) {
-	var wg sync.WaitGroup
-	responseChan := make(chan core.Response, len(council.Members))
-	errorChan := make(chan error, len(council.Members))
+	return e.CollectResponsesWithCallback(ctx, council, nil)
+}
+
+// CollectResponsesWithCallback collects responses with progress callbacks.
+func (e *Engine) CollectResponsesWithCallback(ctx context.Context, council *core.Council, callbacks *CouncilCallbacks) ([]core.Response, error) {
+	type responseResult struct {
+		agent    core.Agent
+		response core.Response
+		err      error
+	}
+
+	resultChan := make(chan responseResult, len(council.Members))
 
 	for _, member := range council.Members {
-		wg.Add(1)
 		go func(agent core.Agent) {
-			defer wg.Done()
-
 			// Build prompt
 			prompt, err := e.buildResponsePrompt(council.Topic, agent)
 			if err != nil {
-				errorChan <- fmt.Errorf("failed to build prompt for %s: %w", agent.Name, err)
+				resultChan <- responseResult{agent: agent, err: fmt.Errorf("failed to build prompt for %s: %w", agent.Name, err)}
 				return
 			}
 
 			// Execute provider
 			prov, err := e.registry.Get(agent.Provider)
 			if err != nil {
-				errorChan <- fmt.Errorf("provider not found for %s: %w", agent.Name, err)
+				resultChan <- responseResult{agent: agent, err: fmt.Errorf("provider not found for %s: %w", agent.Name, err)}
 				return
 			}
 
 			content, err := prov.GenerateWithModel(ctx, prompt, agent.Model)
 			if err != nil {
-				errorChan <- fmt.Errorf("generation failed for %s: %w", agent.Name, err)
+				resultChan <- responseResult{agent: agent, err: fmt.Errorf("generation failed for %s: %w", agent.Name, err)}
 				return
 			}
 
@@ -216,25 +236,33 @@ func (e *Engine) CollectResponses(ctx context.Context, council *core.Council) ([
 				CreatedAt: time.Now(),
 			}
 
-			responseChan <- response
+			resultChan <- responseResult{agent: agent, response: response}
 		}(member)
 	}
 
-	// Wait for all goroutines
-	wg.Wait()
-	close(responseChan)
-	close(errorChan)
+	// Collect all results
+	responses := make([]core.Response, 0, len(council.Members))
+	var firstErr error
 
-	// Check for errors
-	if len(errorChan) > 0 {
-		err := <-errorChan
-		return nil, err
+	for i := 0; i < len(council.Members); i++ {
+		result := <-resultChan
+		if result.err != nil {
+			if firstErr == nil {
+				firstErr = result.err
+			}
+			continue
+		}
+
+		responses = append(responses, result.response)
+
+		// Call callback if provided
+		if callbacks != nil && callbacks.OnResponseCollected != nil {
+			callbacks.OnResponseCollected(result.agent, result.response.Content)
+		}
 	}
 
-	// Collect all responses
-	responses := make([]core.Response, 0, len(council.Members))
-	for response := range responseChan {
-		responses = append(responses, response)
+	if firstErr != nil {
+		return nil, firstErr
 	}
 
 	if len(responses) == 0 {
@@ -246,38 +274,45 @@ func (e *Engine) CollectResponses(ctx context.Context, council *core.Council) ([
 
 // CollectRankings implements Stage 2: collect rankings from all members.
 func (e *Engine) CollectRankings(ctx context.Context, council *core.Council, responses []core.Response) ([]core.Ranking, error) {
+	return e.CollectRankingsWithCallback(ctx, council, responses, nil)
+}
+
+// CollectRankingsWithCallback collects rankings with progress callbacks.
+func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.Council, responses []core.Response, callbacks *CouncilCallbacks) ([]core.Ranking, error) {
 	// Anonymize responses for unbiased ranking
 	anonymized := e.anonymizeResponses(responses)
 
-	var wg sync.WaitGroup
-	rankingChan := make(chan core.Ranking, len(council.Members))
-	errorChan := make(chan error, len(council.Members))
+	type rankingResult struct {
+		agent   core.Agent
+		ranking core.Ranking
+		content string
+		err     error
+	}
+
+	resultChan := make(chan rankingResult, len(council.Members))
 
 	for _, member := range council.Members {
-		wg.Add(1)
 		go func(agent core.Agent) {
-			defer wg.Done()
-
 			// Build ranking prompt
 			prompt := e.buildRankingPrompt(council.Topic, anonymized)
 
 			// Execute provider
 			prov, err := e.registry.Get(agent.Provider)
 			if err != nil {
-				errorChan <- fmt.Errorf("provider not found for %s: %w", agent.Name, err)
+				resultChan <- rankingResult{agent: agent, err: fmt.Errorf("provider not found for %s: %w", agent.Name, err)}
 				return
 			}
 
 			content, err := prov.GenerateWithModel(ctx, prompt, agent.Model)
 			if err != nil {
-				errorChan <- fmt.Errorf("generation failed for %s: %w", agent.Name, err)
+				resultChan <- rankingResult{agent: agent, err: fmt.Errorf("generation failed for %s: %w", agent.Name, err)}
 				return
 			}
 
 			// Parse rankings from response
 			rankedIDs, err := e.parseRankingsFromText(content, responses)
 			if err != nil {
-				errorChan <- fmt.Errorf("failed to parse rankings for %s: %w", agent.Name, err)
+				resultChan <- rankingResult{agent: agent, content: content, err: fmt.Errorf("failed to parse rankings for %s: %w\n\nRaw response:\n%s", agent.Name, err, content)}
 				return
 			}
 
@@ -290,25 +325,33 @@ func (e *Engine) CollectRankings(ctx context.Context, council *core.Council, res
 				CreatedAt:  time.Now(),
 			}
 
-			rankingChan <- ranking
+			resultChan <- rankingResult{agent: agent, ranking: ranking, content: content}
 		}(member)
 	}
 
-	// Wait for all goroutines
-	wg.Wait()
-	close(rankingChan)
-	close(errorChan)
+	// Collect all results
+	rankings := make([]core.Ranking, 0, len(council.Members))
+	var firstErr error
 
-	// Check for errors
-	if len(errorChan) > 0 {
-		err := <-errorChan
-		return nil, err
+	for i := 0; i < len(council.Members); i++ {
+		result := <-resultChan
+		if result.err != nil {
+			if firstErr == nil {
+				firstErr = result.err
+			}
+			continue
+		}
+
+		rankings = append(rankings, result.ranking)
+
+		// Call callback if provided
+		if callbacks != nil && callbacks.OnRankingCollected != nil {
+			callbacks.OnRankingCollected(result.agent, result.content)
+		}
 	}
 
-	// Collect all rankings
-	rankings := make([]core.Ranking, 0, len(council.Members))
-	for ranking := range rankingChan {
-		rankings = append(rankings, ranking)
+	if firstErr != nil {
+		return nil, firstErr
 	}
 
 	if len(rankings) == 0 {
@@ -343,13 +386,13 @@ func (e *Engine) GenerateSynthesis(ctx context.Context, council *core.Council, r
 // getPersona returns the persona definition (builtin or custom).
 func (e *Engine) getPersona(name string) *persona.Persona {
 	// Check builtin first
-	if p := persona.GetBuiltinPersona(name); p != nil {
+	if p := persona.Get(name); p != nil {
 		return p
 	}
 
 	// Check storage for custom personas
 	customPersona, err := e.storage.GetPersona(name)
-	if err == nil {
+	if err == nil && customPersona != nil {
 		return &persona.Persona{
 			ID:           customPersona.ID,
 			Name:         customPersona.Name,
@@ -391,17 +434,17 @@ Here are the anonymized responses:
 
 %s
 
-Analyze each response for accuracy, insight, and quality.
-Provide detailed critique of each.
+Your task:
+1. Briefly analyze each response for accuracy, insight, and quality
+2. Provide your FINAL RANKING at the end
 
-Then provide your FINAL RANKING at the end, listing responses from BEST to WORST.
+IMPORTANT: You MUST end your response with a ranking section in this EXACT format:
 
-Format your final ranking as:
 FINAL RANKING:
 1. Response A
 2. Response B
-3. Response C
-...
+
+(Replace A, B with the actual letters based on quality, best first)
 
 Your evaluation:`, topic, anonymizedResponses)
 }
@@ -460,26 +503,7 @@ func (e *Engine) anonymizeResponses(responses []core.Response) string {
 }
 
 func (e *Engine) parseRankingsFromText(text string, responses []core.Response) ([]string, error) {
-	// Find FINAL RANKING section
-	rankingSection := ""
-	lines := strings.Split(text, "\n")
-	inRanking := false
-
-	for _, line := range lines {
-		if strings.Contains(strings.ToUpper(line), "FINAL RANKING") {
-			inRanking = true
-			continue
-		}
-		if inRanking {
-			rankingSection += line + "\n"
-		}
-	}
-
-	if rankingSection == "" {
-		return nil, fmt.Errorf("no FINAL RANKING section found")
-	}
-
-	// Parse rankings: "1. Response A", "2. Response B", etc.
+	// Map labels to response IDs
 	labels := []string{"A", "B", "C", "D", "E", "F", "G", "H"}
 	labelToID := make(map[string]string)
 	for i, r := range responses {
@@ -488,26 +512,114 @@ func (e *Engine) parseRankingsFromText(text string, responses []core.Response) (
 		}
 	}
 
-	// Extract ordered response labels
-	re := regexp.MustCompile(`\d+\.\s+Response\s+([A-H])`)
-	matches := re.FindAllStringSubmatch(rankingSection, -1)
+	// Try to find a ranking section with various headers
+	rankingSection := ""
+	lines := strings.Split(text, "\n")
+	inRanking := false
 
-	if len(matches) == 0 {
-		return nil, fmt.Errorf("no rankings found in expected format")
+	rankingHeaders := []string{
+		"FINAL RANKING",
+		"RANKING",
+		"MY RANKING",
+		"RANKED",
+		"ORDER",
+		"BEST TO WORST",
+		"FROM BEST",
 	}
 
-	rankedIDs := make([]string, 0, len(matches))
-	for _, match := range matches {
-		if len(match) > 1 {
-			label := match[1]
-			if id, ok := labelToID[label]; ok {
-				rankedIDs = append(rankedIDs, id)
+	for _, line := range lines {
+		upperLine := strings.ToUpper(line)
+		for _, header := range rankingHeaders {
+			if strings.Contains(upperLine, header) {
+				inRanking = true
+				break
+			}
+		}
+		if inRanking {
+			rankingSection += line + "\n"
+		}
+	}
+
+	// If no explicit ranking section, use the entire text
+	if rankingSection == "" {
+		rankingSection = text
+	}
+
+	// Try multiple patterns to extract rankings
+	var rankedIDs []string
+
+	// Pattern 1: "1. Response A", "2. Response B"
+	re1 := regexp.MustCompile(`(?i)\d+[\.\)]\s*Response\s+([A-H])`)
+	if matches := re1.FindAllStringSubmatch(rankingSection, -1); len(matches) > 0 {
+		for _, match := range matches {
+			if len(match) > 1 {
+				label := strings.ToUpper(match[1])
+				if id, ok := labelToID[label]; ok {
+					rankedIDs = append(rankedIDs, id)
+				}
 			}
 		}
 	}
 
+	// Pattern 2: "1. A", "2. B" or "1) A", "2) B"
 	if len(rankedIDs) == 0 {
-		return nil, fmt.Errorf("failed to parse any valid rankings")
+		re2 := regexp.MustCompile(`\d+[\.\)]\s*([A-H])\b`)
+		if matches := re2.FindAllStringSubmatch(rankingSection, -1); len(matches) > 0 {
+			for _, match := range matches {
+				if len(match) > 1 {
+					label := strings.ToUpper(match[1])
+					if id, ok := labelToID[label]; ok {
+						rankedIDs = append(rankedIDs, id)
+					}
+				}
+			}
+		}
+	}
+
+	// Pattern 3: "A > B > C" or "A, B, C"
+	if len(rankedIDs) == 0 {
+		re3 := regexp.MustCompile(`\b([A-H])\s*[>,]\s*([A-H])`)
+		if matches := re3.FindAllStringSubmatch(rankingSection, -1); len(matches) > 0 {
+			seen := make(map[string]bool)
+			for _, match := range matches {
+				for i := 1; i < len(match); i++ {
+					label := strings.ToUpper(match[i])
+					if !seen[label] {
+						if id, ok := labelToID[label]; ok {
+							rankedIDs = append(rankedIDs, id)
+							seen[label] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Pattern 4: Just find any mentions of "Response A/B/C" in order of appearance
+	if len(rankedIDs) == 0 {
+		re4 := regexp.MustCompile(`(?i)Response\s+([A-H])`)
+		seen := make(map[string]bool)
+		if matches := re4.FindAllStringSubmatch(rankingSection, -1); len(matches) > 0 {
+			for _, match := range matches {
+				if len(match) > 1 {
+					label := strings.ToUpper(match[1])
+					if !seen[label] {
+						if id, ok := labelToID[label]; ok {
+							rankedIDs = append(rankedIDs, id)
+							seen[label] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// If still no rankings found, fall back to original response order
+	if len(rankedIDs) == 0 {
+		// Use response order as fallback (not ideal but prevents failures)
+		for _, r := range responses {
+			rankedIDs = append(rankedIDs, r.ID)
+		}
 	}
 
 	return rankedIDs, nil

@@ -3,107 +3,67 @@
 {{define "title"}}{{.Debate.Topic}} - dbate{{end}}
 
 {{define "content"}}
+<!-- Breadcrumb -->
+<nav class="mb-4" aria-label="Breadcrumb">
+    <ol class="flex items-center space-x-2 text-sm text-gray-400">
+        <li><a href="/" class="hover:text-white transition-colors">Home</a></li>
+        <li><span class="text-gray-600">/</span></li>
+        <li><a href="/debates" class="hover:text-white transition-colors">Debates</a></li>
+        <li><span class="text-gray-600">/</span></li>
+        <li class="text-gray-300">{{truncate .Debate.Topic 30}}</li>
+    </ol>
+</nav>
+
 <div class="space-y-6">
     <!-- Header -->
-    <div class="bg-white shadow-sm rounded-lg p-6">
+    <div class="bg-gray-800 shadow-xl rounded-xl p-8 border border-gray-700">
         <div class="flex justify-between items-start">
-            <div>
-                <div class="flex items-center space-x-2">
-                    <h1 class="text-xl font-bold text-gray-900">{{.Debate.Topic}}</h1>
+            <div class="flex-1">
+                <div class="flex items-center space-x-3">
+                    <h1 class="text-2xl font-bold text-white">{{.Debate.Topic}}</h1>
                     {{if .Debate.ReadOnly}}
-                    <span class="text-yellow-600" title="Read-only">🔒</span>
+                    <span class="text-yellow-400" title="Read-only">🔒</span>
                     {{end}}
                 </div>
-                <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
+                <div class="mt-3 flex items-center space-x-4 text-sm text-gray-400">
                     <span class="px-2 py-1 rounded-full text-xs font-medium {{statusColor .Debate.Status}}">
                         {{.Debate.Status}}
                     </span>
-                    <span>Style: <strong class="capitalize">{{.Debate.Style}}</strong></span>
-                    <span>Mode: <strong class="capitalize">{{.Debate.Mode}}</strong></span>
-                    <span>Turns: {{len .Turns}}/{{.Debate.TotalTurns}}</span>
+                    <span>{{len .Turns}}/{{.Debate.TotalTurns}} turns</span>
                 </div>
             </div>
             <div class="flex space-x-2">
                 <!-- Export dropdown -->
                 {{if eq .Debate.Status "completed"}}
-                <div class="relative" x-data="{ open: false }">
+                <div class="relative">
                     <button
                         onclick="this.nextElementSibling.classList.toggle('hidden')"
-                        class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                        class="inline-flex items-center px-3 py-2 border border-gray-600 text-sm font-medium rounded-md text-gray-300 bg-gray-700 hover:bg-gray-600"
                     >
                         Export
                         <svg class="ml-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
                         </svg>
                     </button>
-                    <div class="hidden absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10 border">
-                        <a href="/debates/{{.Debate.ID}}/export/markdown" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                    <div class="hidden absolute right-0 mt-2 w-48 bg-gray-700 rounded-md shadow-lg z-10 border border-gray-600">
+                        <a href="/debates/{{.Debate.ID}}/export/markdown" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600">
                             📝 Markdown
                         </a>
-                        <a href="/debates/{{.Debate.ID}}/export/pdf" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        <a href="/debates/{{.Debate.ID}}/export/pdf" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600">
                             📄 PDF
                         </a>
-                        <a href="/debates/{{.Debate.ID}}/export/json" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        <a href="/debates/{{.Debate.ID}}/export/json" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600">
                             📊 JSON
                         </a>
                     </div>
                 </div>
                 {{end}}
 
-                {{if eq .Debate.Status "pending"}}
-                <button
-                    hx-post="/debates/{{.Debate.ID}}/run"
-                    hx-swap="none"
-                    class="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
-                >
-                    Run Debate
-                </button>
-                {{end}}
-                {{if or (eq .Debate.Status "pending") (eq .Debate.Status "in_progress")}}
-                <button
-                    hx-post="/debates/{{.Debate.ID}}/next"
-                    hx-target="#turns-container"
-                    hx-swap="innerHTML"
-                    hx-indicator="#next-spinner"
-                    class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                >
-                    <span id="next-spinner" class="htmx-indicator mr-2">
-                        <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-                        </svg>
-                    </span>
-                    Next Turn
-                </button>
-                {{end}}
-
-                <!-- Lock/Unlock -->
-                {{if not .Debate.ReadOnly}}
-                <button
-                    hx-post="/debates/{{.Debate.ID}}/lock"
-                    hx-swap="none"
-                    hx-confirm="Lock this debate? It will become read-only."
-                    class="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                    title="Lock debate"
-                >
-                    🔓
-                </button>
-                {{else}}
-                <button
-                    hx-post="/debates/{{.Debate.ID}}/unlock"
-                    hx-swap="none"
-                    class="inline-flex items-center px-3 py-2 border border-yellow-300 text-sm font-medium rounded-md text-yellow-700 bg-yellow-50 hover:bg-yellow-100"
-                    title="Unlock debate"
-                >
-                    🔒
-                </button>
-                {{end}}
-
                 {{if not .Debate.ReadOnly}}
                 <button
                     hx-delete="/debates/{{.Debate.ID}}"
                     hx-confirm="Are you sure you want to delete this debate?"
-                    class="inline-flex items-center px-3 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-white hover:bg-red-50"
+                    class="inline-flex items-center px-3 py-2 border border-red-600 text-sm font-medium rounded-md text-red-400 bg-gray-700 hover:bg-red-900 hover:text-red-300"
                 >
                     Delete
                 </button>
@@ -112,17 +72,17 @@
         </div>
 
         <!-- Agents -->
-        <div class="mt-4 grid grid-cols-2 gap-4">
-            <div class="border rounded-lg p-3 bg-blue-50">
-                <div class="font-medium text-gray-900">{{.Debate.AgentA.Name}}</div>
-                <div class="text-sm text-gray-500">
-                    {{.Debate.AgentA.Provider}}{{if .Debate.AgentA.Model}}/{{.Debate.AgentA.Model}}{{end}} · {{.Debate.AgentA.Persona}}
+        <div class="mt-6 grid grid-cols-2 gap-4">
+            <div class="border border-blue-700 rounded-lg p-4 bg-blue-900 bg-opacity-30">
+                <div class="font-medium text-blue-300 text-lg">{{.Debate.AgentA.Name}}</div>
+                <div class="text-sm text-gray-400 mt-1">
+                    {{.Debate.AgentA.Persona}}
                 </div>
             </div>
-            <div class="border rounded-lg p-3 bg-green-50">
-                <div class="font-medium text-gray-900">{{.Debate.AgentB.Name}}</div>
-                <div class="text-sm text-gray-500">
-                    {{.Debate.AgentB.Provider}}{{if .Debate.AgentB.Model}}/{{.Debate.AgentB.Model}}{{end}} · {{.Debate.AgentB.Persona}}
+            <div class="border border-green-700 rounded-lg p-4 bg-green-900 bg-opacity-30">
+                <div class="font-medium text-green-300 text-lg">{{.Debate.AgentB.Name}}</div>
+                <div class="text-sm text-gray-400 mt-1">
+                    {{.Debate.AgentB.Persona}}
                 </div>
             </div>
         </div>
@@ -135,7 +95,6 @@
         hx-get="/partials/debate/{{.Debate.ID}}/turns"
         hx-trigger="every 5s"
         hx-swap="innerHTML"
-        class="polling border-2 border-blue-300 rounded-lg"
         {{end}}
     >
         {{template "turns-content" .}}
@@ -143,64 +102,88 @@
 
     <!-- Conclusion -->
     {{if .Debate.Conclusion}}
-    <div class="bg-white shadow-sm rounded-lg p-6">
-        <h2 class="text-lg font-bold text-gray-900 mb-4">
-            {{if .Debate.Conclusion.Agreed}}
-                {{if .Debate.Conclusion.EarlyConsensus}}
-                🤝 Conclusion - Consensus Reached Early!
-                {{else}}
-                🤝 Conclusion - Consensus Reached
-                {{end}}
-            {{else}}
-            ⚔️ Conclusion - No Consensus
-            {{end}}
-        </h2>
+    <div class="bg-gradient-to-br from-gray-800 via-gray-850 to-gray-900 shadow-2xl rounded-2xl p-10 border-2 {{if .Debate.Conclusion.Agreed}}border-green-500{{else}}border-yellow-500{{end}} relative overflow-hidden">
+        <!-- Decorative elements -->
+        <div class="absolute top-0 right-0 w-64 h-64 bg-{{if .Debate.Conclusion.Agreed}}green{{else}}yellow{{end}}-500 opacity-5 rounded-full blur-3xl"></div>
 
-        <!-- Voting Results -->
-        {{if or .Debate.Conclusion.AgentAVote .Debate.Conclusion.AgentBVote}}
-        <div class="mb-4 p-4 bg-gray-50 rounded-lg">
-            <h3 class="text-sm font-medium text-gray-700 mb-2">Voting Results</h3>
-            <div class="grid grid-cols-2 gap-4">
+        <div class="relative z-10">
+            <div class="flex items-center gap-4 mb-8">
+                <div class="w-16 h-16 rounded-full bg-{{if .Debate.Conclusion.Agreed}}green{{else}}yellow{{end}}-500 bg-opacity-20 flex items-center justify-center">
+                    <span class="text-4xl">{{if .Debate.Conclusion.Agreed}}🤝{{else}}⚔️{{end}}</span>
+                </div>
+                <div>
+                    <h2 class="text-3xl font-bold text-white">
+                        {{if .Debate.Conclusion.Agreed}}
+                            {{if .Debate.Conclusion.EarlyConsensus}}
+                            Consensus Reached Early!
+                            {{else}}
+                            Consensus Reached
+                            {{end}}
+                        {{else}}
+                        No Consensus
+                        {{end}}
+                    </h2>
+                    <p class="text-gray-400 mt-1">{{if .Debate.Conclusion.Agreed}}Both agents found common ground{{else}}Agents maintained different viewpoints{{end}}</p>
+                </div>
+            </div>
+
+            <!-- Voting Results -->
+            {{if or .Debate.Conclusion.AgentAVote .Debate.Conclusion.AgentBVote}}
+            <div class="mb-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {{if .Debate.Conclusion.AgentAVote}}
-                <div class="flex items-center space-x-2">
-                    {{if .Debate.Conclusion.AgentAVote.Agrees}}
-                    <span class="text-green-600">✅</span>
-                    {{else}}
-                    <span class="text-red-600">❌</span>
-                    {{end}}
-                    <span class="text-sm">{{$.Debate.AgentA.Name}}: {{if .Debate.Conclusion.AgentAVote.Agrees}}Agrees{{else}}Disagrees{{end}}</span>
+                <div class="bg-gray-900 bg-opacity-50 rounded-xl p-5 border border-blue-900 border-opacity-30">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="text-3xl">{{if .Debate.Conclusion.AgentAVote.Agrees}}✅{{else}}❌{{end}}</span>
+                        <span class="font-semibold text-blue-300">{{$.Debate.AgentA.Name}}</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">{{if .Debate.Conclusion.AgentAVote.Agrees}}Agrees with the consensus{{else}}Maintains disagreement{{end}}</p>
                 </div>
                 {{end}}
                 {{if .Debate.Conclusion.AgentBVote}}
-                <div class="flex items-center space-x-2">
-                    {{if .Debate.Conclusion.AgentBVote.Agrees}}
-                    <span class="text-green-600">✅</span>
-                    {{else}}
-                    <span class="text-red-600">❌</span>
-                    {{end}}
-                    <span class="text-sm">{{$.Debate.AgentB.Name}}: {{if .Debate.Conclusion.AgentBVote.Agrees}}Agrees{{else}}Disagrees{{end}}</span>
+                <div class="bg-gray-900 bg-opacity-50 rounded-xl p-5 border border-green-900 border-opacity-30">
+                    <div class="flex items-center gap-3 mb-2">
+                        <span class="text-3xl">{{if .Debate.Conclusion.AgentBVote.Agrees}}✅{{else}}❌{{end}}</span>
+                        <span class="font-semibold text-green-300">{{$.Debate.AgentB.Name}}</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">{{if .Debate.Conclusion.AgentBVote.Agrees}}Agrees with the consensus{{else}}Maintains disagreement{{end}}</p>
                 </div>
                 {{end}}
             </div>
-        </div>
-        {{end}}
+            {{end}}
 
-        <div class="prose max-w-none">
-            <p class="text-gray-700">{{.Debate.Conclusion.Summary}}</p>
+            <!-- Summary -->
+            <div class="bg-gray-900 bg-opacity-30 rounded-xl p-8 border border-gray-700 mb-8">
+                <h3 class="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    Summary
+                </h3>
+                <p class="text-gray-200 text-lg leading-relaxed">{{.Debate.Conclusion.Summary}}</p>
+            </div>
 
+            <!-- Individual positions (if no consensus) -->
             {{if not .Debate.Conclusion.Agreed}}
-            {{if .Debate.Conclusion.AgentASummary}}
-            <div class="mt-4 p-4 bg-blue-50 rounded-lg">
-                <h4 class="font-medium text-gray-900">{{.Debate.AgentA.Name}}'s Position:</h4>
-                <p class="text-gray-700 mt-1">{{.Debate.Conclusion.AgentASummary}}</p>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {{if .Debate.Conclusion.AgentASummary}}
+                <div class="bg-blue-900 bg-opacity-20 rounded-xl p-6 border border-blue-700 border-opacity-50">
+                    <h4 class="font-semibold text-blue-300 text-lg mb-4 flex items-center gap-2">
+                        <span class="text-2xl">💭</span>
+                        {{.Debate.AgentA.Name}}'s Position
+                    </h4>
+                    <p class="text-gray-300 leading-relaxed">{{.Debate.Conclusion.AgentASummary}}</p>
+                </div>
+                {{end}}
+                {{if .Debate.Conclusion.AgentBSummary}}
+                <div class="bg-green-900 bg-opacity-20 rounded-xl p-6 border border-green-700 border-opacity-50">
+                    <h4 class="font-semibold text-green-300 text-lg mb-4 flex items-center gap-2">
+                        <span class="text-2xl">🧠</span>
+                        {{.Debate.AgentB.Name}}'s Position
+                    </h4>
+                    <p class="text-gray-300 leading-relaxed">{{.Debate.Conclusion.AgentBSummary}}</p>
+                </div>
+                {{end}}
             </div>
-            {{end}}
-            {{if .Debate.Conclusion.AgentBSummary}}
-            <div class="mt-4 p-4 bg-green-50 rounded-lg">
-                <h4 class="font-medium text-gray-900">{{.Debate.AgentB.Name}}'s Position:</h4>
-                <p class="text-gray-700 mt-1">{{.Debate.Conclusion.AgentBSummary}}</p>
-            </div>
-            {{end}}
             {{end}}
         </div>
     </div>
@@ -210,33 +193,65 @@
 
 {{define "turns-content"}}
 {{if not .Turns}}
-<div class="bg-white shadow-sm rounded-lg p-12 text-center">
-    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
-    </svg>
-    <h3 class="mt-2 text-sm font-medium text-gray-900">No turns yet</h3>
-    <p class="mt-1 text-sm text-gray-500">Click "Run Debate" or "Next Turn" to start.</p>
+<div class="animate-fadeIn bg-gradient-to-br from-gray-800 to-gray-900 shadow-2xl rounded-2xl p-20 text-center border border-gray-700 relative overflow-hidden">
+    <!-- Decorative background -->
+    <div class="absolute inset-0 opacity-10">
+        <div class="absolute top-10 left-10 w-32 h-32 bg-blue-500 rounded-full blur-3xl"></div>
+        <div class="absolute bottom-10 right-10 w-32 h-32 bg-green-500 rounded-full blur-3xl"></div>
+    </div>
+
+    <div class="relative z-10">
+        <div class="inline-block p-6 bg-gray-900 rounded-full mb-6 shadow-lg">
+            <svg class="h-20 w-20 text-blue-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+            </svg>
+        </div>
+        <h3 class="text-3xl font-bold text-white mb-3">Agents are debating...</h3>
+        <p class="text-gray-400 text-lg max-w-md mx-auto">AI agents are analyzing the topic and formulating their arguments. This typically takes 30-60 seconds.</p>
+        <div class="mt-8 flex justify-center gap-2">
+            <div class="w-3 h-3 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 0s"></div>
+            <div class="w-3 h-3 bg-blue-400 rounded-full animate-bounce" style="animation-delay: 0.15s"></div>
+            <div class="w-3 h-3 bg-blue-300 rounded-full animate-bounce" style="animation-delay: 0.3s"></div>
+        </div>
+    </div>
 </div>
 {{else}}
-<div class="space-y-4">
-    {{range .Turns}}
-    <div class="bg-white shadow-sm rounded-lg p-6 {{if eq .AgentID $.Debate.AgentA.ID}}border-l-4 border-blue-500{{else}}border-l-4 border-green-500{{end}}">
-        <div class="flex justify-between items-start mb-3">
-            <div>
-                <span class="font-medium text-gray-900">
-                    {{if eq .AgentID $.Debate.AgentA.ID}}
-                    {{$.Debate.AgentA.Name}}
-                    {{else}}
-                    {{$.Debate.AgentB.Name}}
-                    {{end}}
-                </span>
-                <span class="text-gray-500 text-sm ml-2">Turn {{.Number}}</span>
-            </div>
-            <span class="text-xs text-gray-400">{{formatTime .CreatedAt}}</span>
-        </div>
-        <div class="turn-content text-gray-700">{{nl2br .Content}}</div>
+<!-- Debate transcript -->
+<div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl border border-gray-700 overflow-hidden">
+    <div class="bg-gray-900 bg-opacity-50 px-8 py-4 border-b border-gray-700">
+        <h2 class="text-xl font-semibold text-white flex items-center gap-2">
+            <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+            </svg>
+            Debate Transcript
+        </h2>
     </div>
-    {{end}}
+
+    <div class="p-6 space-y-6 max-h-[800px] overflow-y-auto">
+        {{range .Turns}}
+        <div class="animate-fadeIn group">
+            <!-- Agent identifier -->
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center shadow-lg {{if eq .AgentID $.Debate.AgentA.ID}}bg-gradient-to-br from-blue-600 to-blue-700{{else}}bg-gradient-to-br from-green-600 to-green-700{{end}}">
+                    <span class="text-2xl">{{if eq .AgentID $.Debate.AgentA.ID}}💭{{else}}🧠{{end}}</span>
+                </div>
+                <div class="flex-1">
+                    <div class="flex items-baseline gap-2">
+                        <span class="font-bold text-lg {{if eq .AgentID $.Debate.AgentA.ID}}text-blue-300{{else}}text-green-300{{end}}">
+                            {{if eq .AgentID $.Debate.AgentA.ID}}{{$.Debate.AgentA.Name}}{{else}}{{$.Debate.AgentB.Name}}{{end}}
+                        </span>
+                        <span class="text-xs text-gray-500">Turn {{.Number}} • {{formatTime .CreatedAt}}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Argument content -->
+            <div class="ml-15 bg-gray-800 bg-opacity-50 rounded-xl p-6 border {{if eq .AgentID $.Debate.AgentA.ID}}border-blue-900 border-opacity-50{{else}}border-green-900 border-opacity-50{{end}} group-hover:shadow-xl transition-shadow">
+                <div class="turn-content text-gray-200 leading-relaxed text-base">{{nl2br .Content}}</div>
+            </div>
+        </div>
+        {{end}}
+    </div>
 </div>
 {{end}}
 {{end}}

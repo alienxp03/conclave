@@ -15,6 +15,12 @@ type Config struct {
 	Defaults  DefaultsConfig            `yaml:"defaults"`
 	Providers map[string]ProviderConfig `yaml:"providers"`
 	Personas  []PersonaConfig           `yaml:"personas,omitempty"`
+	Server    ServerConfig              `yaml:"server,omitempty"`
+}
+
+// ServerConfig holds server settings.
+type ServerConfig struct {
+	Port int `yaml:"port"`
 }
 
 // DefaultsConfig holds default settings.
@@ -52,6 +58,9 @@ func Default() *Config {
 			Provider: "claude",
 			Model:    "",
 		},
+		Server: ServerConfig{
+			Port: 8182,
+		},
 		Providers: map[string]ProviderConfig{
 			"claude": {
 				Command:      "claude",
@@ -85,6 +94,14 @@ func Default() *Config {
 				Timeout:      5 * time.Minute,
 				Enabled:      true,
 			},
+			"mock": {
+				Command:      "",
+				Args:         []string{},
+				DefaultModel: "mock-v1",
+				Models:       []string{"mock-v1", "mock-v2"},
+				Timeout:      1 * time.Minute,
+				Enabled:      true,
+			},
 		},
 	}
 }
@@ -100,15 +117,14 @@ func LoadFrom(path string) (*Config, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			// No config file, use defaults
-			return cfg, nil
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to read config: %w", err)
 		}
-		return nil, fmt.Errorf("failed to read config: %w", err)
-	}
-
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+		// No config file, proceed with defaults
+	} else {
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("failed to parse config: %w", err)
+		}
 	}
 
 	// Merge with defaults for any missing providers
@@ -117,6 +133,11 @@ func LoadFrom(path string) (*Config, error) {
 		if _, exists := cfg.Providers[name]; !exists {
 			cfg.Providers[name] = defaultProvider
 		}
+	}
+
+	// Apply .env overrides if file exists
+	if env, err := LoadEnv(".env"); err == nil {
+		ApplyEnvOverrides(cfg, env)
 	}
 
 	return cfg, nil

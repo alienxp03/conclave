@@ -15,6 +15,7 @@ import (
 
 	"github.com/alienxp03/dbate/internal/config"
 	"github.com/alienxp03/dbate/internal/core"
+	"github.com/alienxp03/dbate/internal/council"
 	"github.com/alienxp03/dbate/internal/engine"
 	"github.com/alienxp03/dbate/internal/export"
 	"github.com/alienxp03/dbate/internal/persona"
@@ -107,14 +108,19 @@ func getRegistry() *provider.Registry {
 
 var newCmd = &cobra.Command{
 	Use:   "new [topic]",
-	Short: "Start a new debate",
-	Long: `Create and run a new debate on the given topic.
+	Short: "Start a new debate or council",
+	Long: `Create and run a new debate or council on the given topic.
 
-Examples:
+2-Agent Debate Examples:
   dbate new "Is AI beneficial for humanity?"
   dbate new "Best programming language" --style adversarial
   dbate new "Climate change" -a claude:optimist -b gemini:skeptic
-  dbate new "Tech trends" -a claude/sonnet:analyst -b qwen:visionary --step`,
+  dbate new "Tech trends" -a claude/sonnet:analyst -b qwen:visionary --step
+
+N-Agent Council Examples (use --models):
+  dbate new "Should we adopt GraphQL?" --models claude,gemini
+  dbate new "API design" --models claude:optimist,gemini:skeptic,qwen:pragmatist
+  dbate new "Tech decision" --models claude/opus,gemini/pro --chairman claude/opus`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: runNewDebate,
 }
@@ -125,14 +131,21 @@ var (
 	styleFlag    string
 	turnsFlag    int
 	stepModeFlag bool
+	modelsFlag   string
+	chairmanFlag string
 )
 
 func init() {
+	// 2-agent debate flags
 	newCmd.Flags().StringVarP(&agentAFlag, "agent-a", "a", "claude:pragmatist", "Agent A (provider[/model]:persona)")
 	newCmd.Flags().StringVarP(&agentBFlag, "agent-b", "b", "claude:skeptic", "Agent B (provider[/model]:persona)")
 	newCmd.Flags().StringVarP(&styleFlag, "style", "s", "collaborative", "Debate style")
 	newCmd.Flags().IntVarP(&turnsFlag, "turns", "t", 5, "Turns per agent")
 	newCmd.Flags().BoolVar(&stepModeFlag, "step", false, "Step-by-step mode (execute one turn at a time)")
+
+	// N-agent council flags
+	newCmd.Flags().StringVarP(&modelsFlag, "models", "m", "", "Council members (comma-separated: provider[/model][:persona],...)")
+	newCmd.Flags().StringVar(&chairmanFlag, "chairman", "", "Chairman (provider[/model], defaults to first member's provider with best model)")
 }
 
 // parseAgentConfig parses "provider[/model]:persona" format
@@ -160,6 +173,140 @@ func parseAgentConfig(cfg string) (prov, model, pers string, err error) {
 func runNewDebate(cmd *cobra.Command, args []string) error {
 	topic := strings.Join(args, " ")
 
+	// Check if council mode (--models flag provided)
+	if modelsFlag != "" {
+		return runNewCouncil(cmd, topic)
+	}
+
+	// Standard 2-agent debate mode
+	return runNewTwoAgentDebate(cmd, topic)
+}
+
+func runNewCouncil(cmd *cobra.Command, topic string) error {
+	store, err := getStorage()
+	if err != nil {
+		return fmt.Errorf("failed to initialize storage: %w", err)
+	}
+	defer store.Close()
+
+	registry := getRegistry()
+	councilEng := council.New(store, registry)
+
+	// Parse member specs
+	members, err := core.ParseMemberSpecs(modelsFlag)
+	if err != nil {
+		return fmt.Errorf("invalid --models: %w", err)
+	}
+
+	// Parse optional chairman
+	var chairman *core.MemberSpec
+	if chairmanFlag != "" {
+		ch, err := core.ParseMemberSpec(chairmanFlag)
+		if err != nil {
+			return fmt.Errorf("invalid --chairman: %w", err)
+		}
+		chairman = &ch
+	}
+
+	// Create council config
+	config := core.NewCouncilConfig{
+		Topic:    topic,
+		Members:  members,
+		Chairman: chairman,
+	}
+
+	// Create council
+	c, err := councilEng.CreateCouncil(cmd.Context(), config)
+	if err != nil {
+		return fmt.Errorf("failed to create council: %w", err)
+	}
+
+	// Display council info
+	fmt.Printf("\n🏛️  Council: %s\n", c.Topic)
+	fmt.Printf("   ID: %s\n", c.ID)
+	fmt.Printf("   Members (%d):\n", len(c.Members))
+	for _, m := range c.Members {
+		modelInfo := ""
+		if m.Model != "" {
+			modelInfo = "/" + m.Model
+		}
+		fmt.Printf("     • %s (%s%s)\n", m.Name, m.Provider, modelInfo)
+	}
+	chairModel := ""
+	if c.Chairman.Model != "" {
+		chairModel = "/" + c.Chairman.Model
+	}
+	fmt.Printf("   Chairman: %s%s\n\n", c.Chairman.Provider, chairModel)
+	fmt.Println(strings.Repeat("─", 60))
+
+	// Set up callbacks for progress display
+	responseCount := 0
+	rankingCount := 0
+
+	callbacks := &council.CouncilCallbacks{
+		OnResponseCollected: func(agent core.Agent, response string) {
+			responseCount++
+			fmt.Printf("\n%s [Stage 1 - Response %d/%d] %s\n", strings.Repeat("─", 20), responseCount, len(c.Members), agent.Name)
+			fmt.Println(strings.Repeat("─", 60))
+			// Truncate long responses for display
+			if len(response) > 500 {
+				fmt.Println(response[:500] + "...")
+			} else {
+				fmt.Println(response)
+			}
+			fmt.Println()
+		},
+		OnRankingCollected: func(agent core.Agent, ranking string) {
+			rankingCount++
+			fmt.Printf("\n%s [Stage 2 - Ranking %d/%d] %s\n", strings.Repeat("─", 20), rankingCount, len(c.Members), agent.Name)
+			fmt.Println(strings.Repeat("─", 60))
+			// Truncate long rankings for display
+			if len(ranking) > 500 {
+				fmt.Println(ranking[:500] + "...")
+			} else {
+				fmt.Println(ranking)
+			}
+			fmt.Println()
+		},
+		OnSynthesisComplete: func(synthesis string) {
+			fmt.Printf("\n%s [Stage 3 - Synthesis]\n", strings.Repeat("─", 20))
+		},
+	}
+
+	// Run council (3-stage pipeline)
+	fmt.Println("\nRunning council...")
+	fmt.Println("[Stage 1/3] Collecting responses...")
+
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		fmt.Println("\n\nInterrupted. Saving council state...")
+		cancel()
+	}()
+
+	err = councilEng.RunCouncilWithCallbacks(ctx, c, callbacks)
+	if err != nil {
+		if ctx.Err() != nil {
+			fmt.Println("\nCouncil paused.")
+			return nil
+		}
+		return fmt.Errorf("council failed: %w", err)
+	}
+
+	// Display final synthesis
+	fmt.Println(strings.Repeat("═", 60))
+	fmt.Println("🏁 FINAL SYNTHESIS")
+	fmt.Println(strings.Repeat("═", 60))
+	fmt.Println(c.Synthesis)
+
+	return nil
+}
+
+func runNewTwoAgentDebate(cmd *cobra.Command, topic string) error {
 	store, err := getStorage()
 	if err != nil {
 		return fmt.Errorf("failed to initialize storage: %w", err)
@@ -1200,6 +1347,10 @@ var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the web interface",
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if !cmd.Flags().Changed("port") && appConfig != nil && appConfig.Server.Port != 0 {
+			servePort = appConfig.Server.Port
+		}
+
 		store, err := getStorage()
 		if err != nil {
 			return fmt.Errorf("failed to initialize storage: %w", err)

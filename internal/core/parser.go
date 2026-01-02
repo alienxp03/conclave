@@ -110,7 +110,7 @@ var DefaultModelForProvider = map[string]string{
 	"claude": "sonnet",
 	"gemini": "pro",
 	"qwen":   "max",
-	"codex":  "gpt4",
+	"codex":  "gpt-5.1-codex",
 }
 
 // BestModelForProvider returns the best (most capable) model for a provider.
@@ -119,7 +119,7 @@ var BestModelForProvider = map[string]string{
 	"claude": "opus",
 	"gemini": "pro",
 	"qwen":   "max",
-	"codex":  "gpt4",
+	"codex":  "gpt-5.1-codex",
 }
 
 // AssignDefaultModels assigns default models to member specs that don't have one.

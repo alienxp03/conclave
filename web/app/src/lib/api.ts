@@ -1,0 +1,100 @@
+import type { Debate, Provider, CreateDebateRequest, Turn, Persona, Style, Council, CouncilResponse, CouncilRanking, CreateCouncilRequest, CouncilSummary } from '../types';
+
+const API_BASE = '/api';
+
+class ApiClient {
+  async getProviders(): Promise<Provider[]> {
+    const response = await fetch(`${API_BASE}/providers`);
+    if (!response.ok) throw new Error('Failed to fetch providers');
+    return response.json();
+  }
+
+  async getPersonas(): Promise<Persona[]> {
+    const response = await fetch(`${API_BASE}/personas`);
+    if (!response.ok) throw new Error('Failed to fetch personas');
+    return response.json();
+  }
+
+  async getStyles(): Promise<Style[]> {
+    const response = await fetch(`${API_BASE}/styles`);
+    if (!response.ok) throw new Error('Failed to fetch styles');
+    return response.json();
+  }
+
+  async getDebates(limit = 50, offset = 0): Promise<Debate[]> {
+    const response = await fetch(`${API_BASE}/debates?limit=${limit}&offset=${offset}`);
+    if (!response.ok) throw new Error('Failed to fetch debates');
+    return response.json();
+  }
+
+  async getDebate(id: string): Promise<{ debate: Debate; turns: Turn[] }> {
+    const response = await fetch(`${API_BASE}/debates/${id}`);
+    if (!response.ok) throw new Error('Failed to fetch debate');
+    return response.json();
+  }
+
+  async createDebate(request: CreateDebateRequest): Promise<Debate> {
+    const response = await fetch(`${API_BASE}/debates`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to create debate');
+    }
+
+    return response.json();
+  }
+
+  async deleteDebate(id: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/debates/${id}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete debate');
+  }
+
+  // Create an EventSource for streaming debate updates
+  createDebateStream(debateId: string): EventSource {
+    return new EventSource(`${API_BASE}/debates/${debateId}/stream`);
+  }
+
+  // Council API
+  async getCouncils(limit = 50, offset = 0): Promise<CouncilSummary[]> {
+    const response = await fetch(`${API_BASE}/councils?limit=${limit}&offset=${offset}`);
+    if (!response.ok) throw new Error('Failed to fetch councils');
+    return response.json();
+  }
+
+  async getCouncil(id: string): Promise<{ council: Council; responses: CouncilResponse[]; rankings: CouncilRanking[] }> {
+    const response = await fetch(`${API_BASE}/councils/${id}`);
+    if (!response.ok) throw new Error('Failed to fetch council');
+    return response.json();
+  }
+
+  async createCouncil(request: CreateCouncilRequest): Promise<Council> {
+    const response = await fetch(`${API_BASE}/councils`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to create council');
+    }
+
+    return response.json();
+  }
+
+  createCouncilStream(councilId: string): EventSource {
+    return new EventSource(`${API_BASE}/councils/${councilId}/stream`);
+  }
+}
+
+export const api = new ApiClient();

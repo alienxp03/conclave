@@ -36,6 +36,9 @@ func New(store storage.Storage, registry *provider.Registry) *Engine {
 // CreateDebate creates a new debate session.
 func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) (*core.Debate, error) {
 	// Validate providers
+	if config.AgentAProvider == "" {
+		return nil, fmt.Errorf("agent A provider is required")
+	}
 	providerA, err := e.registry.Get(config.AgentAProvider)
 	if err != nil {
 		return nil, fmt.Errorf("invalid provider for agent A: %w", err)
@@ -44,6 +47,9 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 		return nil, fmt.Errorf("provider %s is not available (CLI not found)", config.AgentAProvider)
 	}
 
+	if config.AgentBProvider == "" {
+		return nil, fmt.Errorf("agent B provider is required")
+	}
 	providerB, err := e.registry.Get(config.AgentBProvider)
 	if err != nil {
 		return nil, fmt.Errorf("invalid provider for agent B: %w", err)

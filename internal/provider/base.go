@@ -129,6 +129,7 @@ func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string
 	defer cancel()
 
 	allArgs := append(p.args, extraArgs...)
+	// fmt.Printf("Executing command: %s %s\n", p.command, strings.Join(allArgs, " "))
 	cmd := exec.CommandContext(ctx, p.command, allArgs...)
 
 	// Use size-limited writers to prevent memory issues
