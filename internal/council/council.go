@@ -716,17 +716,11 @@ Individual Responses:
 
 %s
 
-Your task:
-1. Synthesize all perspectives and rankings into a coherent conclusion
-2. Identify areas of agreement and disagreement
-3. Highlight the strongest arguments (based on rankings)
-4. Provide a balanced recommendation, taking into account the history and any new user directives
-
-IMPORTANT: Do not offer any follow up. Focus solely on synthesis.
-
-Your synthesis:
-
-Use Markdown format.`, council.Topic, contextText.String(), responsesText.String(), rankingsText.String())
+Your task as Chairman is to synthesize all of this information into a single, comprehensive, accurate answer to the user's original question. Consider:
+- The individual responses and their insights
+- The peer rankings and what they reveal about response quality
+- Any patterns of agreement or disagreement
+`, council.Topic, contextText.String(), responsesText.String(), rankingsText.String())
 }
 
 func (e *Engine) formatResponsesForRanking(responses []core.Response, members []core.Agent) string {
