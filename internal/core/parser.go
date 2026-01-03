@@ -107,48 +107,53 @@ func AssignDefaultPersonas(members []MemberSpec) []MemberSpec {
 
 // DefaultCommandForProvider returns the default command for a provider.
 var DefaultCommandForProvider = map[string]string{
-	"claude": "claude",
-	"gemini": "gemini",
-	"qwen":   "qwen",
-	"codex":  "codex",
-	"mock":   "",
+	"claude":   "claude",
+	"gemini":   "gemini",
+	"qwen":     "qwen",
+	"codex":    "codex",
+	"opencode": "opencode",
+	"mock":     "",
 }
 
 // DefaultArgsForProvider returns the default arguments for a provider.
 var DefaultArgsForProvider = map[string][]string{
-	"claude": {"--print"},
-	"gemini": {},
-	"qwen":   {},
-	"codex":  {},
-	"mock":   {},
+	"claude":   {"--print"},
+	"gemini":   {},
+	"qwen":     {},
+	"codex":    {},
+	"opencode": {},
+	"mock":     {},
 }
 
 // DefaultModelsForProvider returns the list of supported models for a provider.
 var DefaultModelsForProvider = map[string][]string{
-	"claude": {"opus-4.5", "sonnet-4.5", "haiku-4.5"},
-	"gemini": {"gemini-3-pro-preview", "gemini-3-flash-preview"},
-	"qwen":   {"qwen-3-coder-plus"},
-	"codex":  {"gpt-5.2-codex", "gpt-5.2"},
-	"mock":   {"mock-v1", "mock-v2"},
+	"claude":   {"opus-4.5", "sonnet-4.5", "haiku-4.5"},
+	"gemini":   {"gemini-3-pro-preview", "gemini-3-flash-preview"},
+	"qwen":     {"qwen-3-coder-plus"},
+	"codex":    {"gpt-5.2-codex", "gpt-5.2"},
+	"opencode": {"zai-coding-plan/glm-4.7", "google/gemini-3-flash-preview"},
+	"mock":     {"mock-v1", "mock-v2"},
 }
 
 // DefaultModelForProvider returns the default model for a provider.
 var DefaultModelForProvider = map[string]string{
-	"claude": "sonnet-4.5",
-	"gemini": "gemini-3-flash-preview",
-	"qwen":   "qwen-3-coder-plus",
-	"codex":  "gpt-5.2-codex",
-	"mock":   "mock-v1",
+	"claude":   "sonnet-4.5",
+	"gemini":   "gemini-3-flash-preview",
+	"qwen":     "qwen-3-coder-plus",
+	"codex":    "gpt-5.2-codex",
+	"opencode": "zai-coding-plan/glm-4.7",
+	"mock":     "mock-v1",
 }
 
 // BestModelForProvider returns the best (most capable) model for a provider.
 // Used for chairman selection.
 var BestModelForProvider = map[string]string{
-	"claude": "opus",
-	"gemini": "pro",
-	"qwen":   "max",
-	"codex":  "gpt-5.2-codex",
-	"mock":   "mock-v1",
+	"claude":   "opus",
+	"gemini":   "pro",
+	"qwen":     "max",
+	"codex":    "gpt-5.2-codex",
+	"opencode": "zai-coding-plan/glm-4.7",
+	"mock":     "mock-v1",
 }
 
 // AssignDefaultModels assigns default models to member specs that don't have one.

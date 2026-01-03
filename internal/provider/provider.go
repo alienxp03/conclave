@@ -120,6 +120,8 @@ func RegistryFromConfig(cfg *config.Config) *Registry {
 			p = NewGeminiProviderWithConfig(provCfg)
 		case "qwen":
 			p = NewQwenProviderWithConfig(provCfg)
+		case "opencode":
+			p = NewOpencodeProviderWithConfig(provCfg)
 		case "mock":
 			p = NewMockProviderWithConfig(provCfg)
 		default:

@@ -2,6 +2,8 @@ package provider
 
 import (
 	"encoding/json"
+	"log/slog"
+	"strings"
 	"time"
 )
 
@@ -257,7 +259,7 @@ func ParseQwenJSON(data string) (*Response, error) {
 	var events []QwenEvent
 	if err := json.Unmarshal([]byte(data), &events); err == nil && len(events) > 0 {
 		resp := &Response{Raw: data}
-		
+
 		var resultText string
 		var assistantText string
 		var usage *ResponseMeta
@@ -274,7 +276,7 @@ func ParseQwenJSON(data string) (*Response, error) {
 					}
 				}
 			}
-			
+
 			if event.Type == "assistant" && event.Message != nil {
 				for _, c := range event.Message.Content {
 					if c.Type == "text" {
@@ -290,16 +292,16 @@ func ParseQwenJSON(data string) (*Response, error) {
 				}
 			}
 		}
-		
+
 		// Prioritize resultText, then assistantText
 		if resultText != "" {
 			resp.Content = resultText
 		} else {
 			resp.Content = assistantText
 		}
-		
+
 		resp.Metadata = usage
-		
+
 		if resp.Content != "" {
 			return resp, nil
 		}
@@ -340,6 +342,68 @@ func ParseQwenJSON(data string) (*Response, error) {
 		} else {
 			resp.Metadata.TotalTokens = raw.Usage.InputTokens + raw.Usage.OutputTokens
 		}
+	}
+
+	return resp, nil
+}
+
+// OpencodeJSONEvent represents an event in the Opencode CLI JSON lines output.
+type OpencodeJSONEvent struct {
+	Type      string `json:"type"`
+	SessionID string `json:"sessionID"`
+	Part      *struct {
+		Type   string `json:"type"`
+		Text   string `json:"text,omitempty"`
+		Reason string `json:"reason,omitempty"`
+		Tokens *struct {
+			Input  int `json:"input"`
+			Output int `json:"output"`
+		} `json:"tokens,omitempty"`
+	} `json:"part,omitempty"`
+}
+
+// ParseOpencodeJSON parses Opencode CLI JSON lines output.
+func ParseOpencodeJSON(data string) (*Response, error) {
+	resp := &Response{Raw: data}
+	lines := strings.Split(data, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		var event OpencodeJSONEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			slog.Debug("Failed to unmarshal Opencode JSON line", "line", line, "error", err)
+			continue
+		}
+
+		if event.Type == "text" && event.Part != nil {
+			resp.Content += event.Part.Text
+		}
+
+		if event.Type == "step_finish" && event.Part != nil {
+			if resp.Metadata == nil {
+				resp.Metadata = &ResponseMeta{}
+			}
+			resp.Metadata.StopReason = event.Part.Reason
+			resp.Metadata.SessionID = event.SessionID
+			if event.Part.Tokens != nil {
+				resp.Metadata.InputTokens = event.Part.Tokens.Input
+				resp.Metadata.OutputTokens = event.Part.Tokens.Output
+				resp.Metadata.TotalTokens = event.Part.Tokens.Input + event.Part.Tokens.Output
+			}
+		}
+	}
+
+	if resp.Content == "" {
+		slog.Debug("No text content found in Opencode output, using raw output as fallback")
+		// Fallback if no text events found or parsing failed
+		return &Response{
+			Content: data,
+			Raw:     data,
+		}, nil
 	}
 
 	return resp, nil

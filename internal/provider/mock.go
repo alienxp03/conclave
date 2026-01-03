@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"time"
 
@@ -23,6 +24,9 @@ func NewMockProvider(cfg config.ProviderConfig) *MockProvider {
 
 // Generate generates a simulated response.
 func (p *MockProvider) Generate(ctx context.Context, prompt string) (string, error) {
+	slog.Info("Mock provider generating response", "prompt_len", len(prompt))
+	slog.Debug("Mock prompt", "content", prompt)
+
 	// Simulate processing time
 	select {
 	case <-ctx.Done():
@@ -31,7 +35,9 @@ func (p *MockProvider) Generate(ctx context.Context, prompt string) (string, err
 	}
 
 	// Simple simulated response
-	return fmt.Sprintf("Mock response to: %s... [Simulated content]", truncate(prompt, 50)), nil
+	response := fmt.Sprintf("Mock response to: %s... [Simulated content]", truncate(prompt, 50))
+	slog.Debug("Mock response", "content", response)
+	return response, nil
 }
 
 // GenerateWithModel generates a simulated response with a specific model.

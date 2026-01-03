@@ -65,7 +65,7 @@ run: build-cli ## Build and show CLI help
 	./$(BUILD_DIR)/$(CLI_BINARY) --help
 
 serve: build-server ## Build and start web server
-	./$(BUILD_DIR)/$(SERVER_BINARY)
+	./$(BUILD_DIR)/$(SERVER_BINARY) --debug
 
 install: build ## Install conclave to ~/.local/bin (no sudo)
 	@mkdir -p ~/.local/bin

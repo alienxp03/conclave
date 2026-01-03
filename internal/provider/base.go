@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
@@ -129,7 +130,11 @@ func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string
 	defer cancel()
 
 	allArgs := append(p.args, extraArgs...)
-	// fmt.Printf("Executing command: %s %s\n", p.command, strings.Join(allArgs, " "))
+	slog.Debug("Executing CLI command",
+		"provider", p.name,
+		"command", p.command,
+		"args", allArgs,
+	)
 	cmd := exec.CommandContext(ctx, p.command, allArgs...)
 
 	// Use size-limited writers to prevent memory issues
@@ -141,6 +146,11 @@ func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string
 	cmd.Stderr = stderrLimited
 
 	if err := cmd.Run(); err != nil {
+		slog.Error("CLI command failed",
+			"provider", p.name,
+			"error", err,
+			"stderr", stderr.String(),
+		)
 		if ctx.Err() == context.DeadlineExceeded {
 			return "", &CLIError{
 				Provider: p.name,
@@ -167,6 +177,10 @@ func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string
 	}
 
 	result := strings.TrimSpace(stdout.String())
+	slog.Debug("CLI command successful",
+		"provider", p.name,
+		"output_len", len(result),
+	)
 	if stdoutLimited.limited {
 		result = result + "\n... (output truncated at 10MB)"
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -28,6 +29,7 @@ import (
 var (
 	dbPath    string
 	cfgPath   string
+	debug     bool
 	appConfig *config.Config
 )
 
@@ -46,6 +48,16 @@ var rootCmd = &cobra.Command{
 Create debates on any topic and watch AI agents with different personas
 argue, collaborate, or analyze from multiple perspectives.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Initialize logging
+		level := slog.LevelInfo
+		if debug {
+			level = slog.LevelDebug
+		}
+		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+			Level: level,
+		}))
+		slog.SetDefault(logger)
+
 		// Load config
 		var err error
 		if cfgPath != "" {
@@ -63,6 +75,7 @@ argue, collaborate, or analyze from multiple perspectives.`,
 func init() {
 	rootCmd.PersistentFlags().StringVar(&dbPath, "db", "", "Database path (default: ~/.conclave/conclave.db)")
 	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", "", "Config file path (default: ~/.conclave/config.yaml)")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug logging")
 
 	rootCmd.AddCommand(newCmd)
 	rootCmd.AddCommand(listCmd)
