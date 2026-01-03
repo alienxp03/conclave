@@ -6,6 +6,8 @@ AI-powered multi-agent deliberation platform that orchestrates debates and counc
 
 > **Note:** This project is 99.9% vibe coded. Expect rough edges, experimental features, and the occasional surprise.
 
+**Based on:** [karpathy/llm-council](https://github.com/karpathy/llm-council) — reimplemented to work with existing CLI coding agents (Claude, Gemini, Qwen, etc.) instead of direct API calls.
+
 ## Features
 
 - **Multi-Agent Councils** — Run discussions with N agents using a 3-stage pipeline (Responses → Ranking → Synthesis)
