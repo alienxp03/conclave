@@ -31,47 +31,25 @@ make install
 
 ## Quick Start
 
-### CLI Usage
-
-```bash
-# Start a basic debate
-conclave new "Should we use Go for our next microservice?"
-
-# Multi-agent council with custom personas
-conclave new "Project Roadmap 2026" \
-  --models claude:optimist,gemini:skeptic,qwen:pragmatist
-
-# View and manage sessions
-conclave list              # Session history
-conclave show <id>         # View details
-conclave export <id> pdf   # Export to PDF
-```
-
-### Web Interface
+Start the web server:
 
 ```bash
 conclave serve --port 8080
 ```
 
-Visit `http://localhost:8080` for:
-- Real-time streaming debates with character-by-character rendering
-- Session history browser
-- Visual council and debate configuration
+Open `http://localhost:8080` in your browser to:
+- **Create Councils** — Set up multi-agent deliberations with custom personas
+- **Watch Live** — Real-time streaming debates with character-by-character rendering
+- **Browse History** — View, search, and manage past sessions
+- **Export** — Download sessions as Markdown, PDF, or JSON
 
-### Advanced
+## Configuration
+
+Optionally configure default settings:
 
 ```bash
-# Custom personas
-conclave persona create --id researcher --name "Deep Researcher" \
-  --prompt "You are a meticulous researcher..."
-
-# Manage debate styles
-conclave style list
-conclave style show socratic
-
-# Config file
-conclave config init
-conclave config show
+conclave config init    # Create ~/.conclave/config.yaml
+conclave config show    # View current configuration
 ```
 
 ## Architecture
