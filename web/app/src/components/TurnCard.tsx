@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import type { Turn, Debate } from '../types';
 
 interface TurnCardProps {
@@ -48,8 +49,8 @@ export function TurnCard({ turn, debate, isStreaming = false }: TurnCardProps) {
 
       {/* Argument content */}
       <div className={borderClasses}>
-        <div className="text-gray-200 leading-relaxed text-base prose prose-invert max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        <div className="text-[#d3c6aa] leading-relaxed text-base prose prose-invert prose-p:leading-relaxed prose-pre:bg-[#2b3339] prose-pre:border prose-pre:border-brand-border max-w-none">
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
             {turn.content}
           </ReactMarkdown>
           {isStreaming && <span className="inline-block w-2 h-5 bg-gray-400 ml-1 animate-pulse" />}

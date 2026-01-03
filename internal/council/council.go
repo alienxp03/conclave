@@ -400,7 +400,7 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 	for _, member := range council.Members {
 		go func(agent core.Agent) {
 			// Build ranking prompt
-			prompt := e.buildRankingPrompt(council.Topic, formattedResponses)
+			prompt := e.buildRankingPrompt(council, formattedResponses)
 
 			// Execute provider
 			prov, err := e.registry.Get(agent.Provider)
@@ -479,7 +479,7 @@ func (e *Engine) GenerateSynthesis(ctx context.Context, council *core.Council, r
 	aggregateRanks := e.calculateAggregateRankings(responses, rankings, council.Members)
 
 	// Build synthesis prompt
-	prompt := e.buildSynthesisPrompt(council.Topic, responses, aggregateRanks, council.Members)
+	prompt := e.buildSynthesisPrompt(council, responses, aggregateRanks)
 
 	// Execute chairman
 	prov, err := e.registry.Get(council.Chairman.Provider)
@@ -526,10 +526,8 @@ func (e *Engine) buildResponsePromptWithHistory(council *core.Council, agent cor
 	// Build history text
 	var historyText strings.Builder
 	if len(council.Syntheses) > 0 {
-		historyText.WriteString("\nPrevious round syntheses:\n")
-		for _, s := range council.Syntheses {
-			historyText.WriteString(fmt.Sprintf("\nRound %d Synthesis:\n%s\n", s.Round, s.Content))
-		}
+		latestSynthesis := council.Syntheses[len(council.Syntheses)-1]
+		historyText.WriteString(fmt.Sprintf("\nConclusion from Chairman %s:\n%s\n", council.Chairman.Name, latestSynthesis.Content))
 	}
 
 	// Check if there's a user directive in the current round
@@ -551,7 +549,7 @@ Topic: %s
 %s`, personaDef.SystemPrompt, council.Topic, historyText.String())
 
 	if directive != "" {
-		prompt += fmt.Sprintf("\n\nFollow-up directive from user: %s\n\nPlease incorporate this feedback or address this follow-up question in your response.", directive)
+		prompt += fmt.Sprintf("\nFollow up question by user: \"%s\"\n\nPlease answer the question given by the user, taking into account the Chairman's previous conclusion.", directive)
 	} else {
 		prompt += "\n\nProvide your perspective on this topic. Focus on what matters most from your viewpoint."
 	}
@@ -588,6 +586,13 @@ func (e *Engine) AddFollowUp(ctx context.Context, councilID string, content stri
 		return fmt.Errorf("failed to save user follow-up: %w", err)
 	}
 
+	// Set status to in_progress synchronously to avoid race condition with UI re-fetch
+	council.Status = core.StatusInProgress
+	council.UpdatedAt = time.Now()
+	if err := e.storage.UpdateCouncil(council); err != nil {
+		slog.Error("Failed to update council status during follow-up", "error", err)
+	}
+
 	// Trigger background run
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -621,17 +626,41 @@ Use Markdown format.`, personaDef.SystemPrompt, topic)
 	return prompt, nil
 }
 
-func (e *Engine) buildRankingPrompt(topic string, formattedResponses string) string {
+func (e *Engine) buildRankingPrompt(council *core.Council, formattedResponses string) string {
+	var contextText strings.Builder
+	if len(council.Syntheses) > 0 {
+		latestSynthesis := council.Syntheses[len(council.Syntheses)-1]
+		contextText.WriteString(fmt.Sprintf("\nConclusion from Chairman %s:\n%s\n", council.Chairman.Name, latestSynthesis.Content))
+	}
+
+	// Check for directive in current round
+	existingResponses, _ := e.storage.GetResponses(council.ID)
+	var directive string
+	round := 1
+	if len(existingResponses) > 0 {
+		round = existingResponses[len(existingResponses)-1].Round
+	}
+	for _, r := range existingResponses {
+		if r.Round == round && r.MemberID == "user" {
+			directive = r.Content
+			break
+		}
+	}
+
+	if directive != "" {
+		contextText.WriteString(fmt.Sprintf("\nFollow up question by user: \"%s\"\n", directive))
+	}
+
 	return fmt.Sprintf(`You are evaluating multiple responses to the following topic:
 
 Topic: %s
-
+%s
 Here are the responses from different perspectives:
 
 %s
 
 Your task:
-1. Briefly analyze each response for accuracy, insight, and quality
+1. Briefly analyze each response for accuracy, insight, and quality (especially how well they addressed the user's follow-up if applicable)
 2. Provide your FINAL RANKING at the end
 
 IMPORTANT: You MUST end your response with a ranking section in this EXACT format:
@@ -644,13 +673,13 @@ FINAL RANKING:
 
 Your evaluation:
 
-Use Markdown format.`, topic, formattedResponses)
+Use Markdown format.`, council.Topic, contextText.String(), formattedResponses)
 }
 
-func (e *Engine) buildSynthesisPrompt(topic string, responses []core.Response, aggregateRanks []core.AggregateRanking, members []core.Agent) string {
+func (e *Engine) buildSynthesisPrompt(council *core.Council, responses []core.Response, aggregateRanks []core.AggregateRanking) string {
 	// Map member IDs to names
 	memberNames := make(map[string]string)
-	for _, m := range members {
+	for _, m := range council.Members {
 		memberNames[m.ID] = m.Name
 	}
 
@@ -658,6 +687,9 @@ func (e *Engine) buildSynthesisPrompt(topic string, responses []core.Response, a
 	var responsesText strings.Builder
 	for _, r := range responses {
 		memberName := memberNames[r.MemberID]
+		if r.MemberID == "user" {
+			memberName = "User Follow-up"
+		}
 		responsesText.WriteString(fmt.Sprintf("\n[%s]\n%s\n", memberName, r.Content))
 	}
 
@@ -669,10 +701,16 @@ func (e *Engine) buildSynthesisPrompt(topic string, responses []core.Response, a
 		rankingsText.WriteString(fmt.Sprintf("%d. %s - Avg rank: %.2f\n", i+1, memberName, ar.AvgRank))
 	}
 
+	var contextText strings.Builder
+	if len(council.Syntheses) > 0 {
+		latestSynthesis := council.Syntheses[len(council.Syntheses)-1]
+		contextText.WriteString(fmt.Sprintf("\nYour Previous Conclusion:\n%s\n", latestSynthesis.Content))
+	}
+
 	return fmt.Sprintf(`You are the Chairman synthesizing a council discussion.
 
 Topic: %s
-
+%s
 Individual Responses:
 %s
 
@@ -682,11 +720,13 @@ Your task:
 1. Synthesize all perspectives and rankings into a coherent conclusion
 2. Identify areas of agreement and disagreement
 3. Highlight the strongest arguments (based on rankings)
-4. Provide a balanced recommendation
+4. Provide a balanced recommendation, taking into account the history and any new user directives
+
+IMPORTANT: Do not offer any follow up. Focus solely on synthesis.
 
 Your synthesis:
 
-Use Markdown format.`, topic, responsesText.String(), rankingsText.String())
+Use Markdown format.`, council.Topic, contextText.String(), responsesText.String(), rankingsText.String())
 }
 
 func (e *Engine) formatResponsesForRanking(responses []core.Response, members []core.Agent) string {

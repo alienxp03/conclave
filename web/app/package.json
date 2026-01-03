@@ -11,11 +11,13 @@
   },
   "dependencies": {
     "@assistant-ui/react": "^0.11.53",
+    "@tailwindcss/typography": "^0.5.19",
     "@tanstack/react-query": "^5.90.16",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.11.0",
+    "remark-breaks": "^4.0.0",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {

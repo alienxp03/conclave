@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -129,8 +131,7 @@ func (s *SQLiteStorage) Initialize() error {
 		round INTEGER NOT NULL DEFAULT 1,
 		content TEXT NOT NULL,
 		created_at DATETIME NOT NULL,
-		FOREIGN KEY (council_id) REFERENCES councils(id) ON DELETE CASCADE,
-		FOREIGN KEY (member_id) REFERENCES council_members(id) ON DELETE CASCADE
+		FOREIGN KEY (council_id) REFERENCES councils(id) ON DELETE CASCADE
 	);
 
 	CREATE TABLE IF NOT EXISTS rankings (
@@ -185,6 +186,37 @@ func (s *SQLiteStorage) migrate() {
 	s.db.Exec("ALTER TABLE turns ADD COLUMN round INTEGER NOT NULL DEFAULT 1")
 	s.db.Exec("ALTER TABLE responses ADD COLUMN round INTEGER NOT NULL DEFAULT 1")
 	s.db.Exec("ALTER TABLE rankings ADD COLUMN round INTEGER NOT NULL DEFAULT 1")
+
+	// Fix responses table constraint (remove member_id foreign key)
+	// Check if constraint exists by checking schema
+	var schema string
+	err := s.db.QueryRow("SELECT sql FROM sqlite_master WHERE type='table' AND name='responses'").Scan(&schema)
+	if err == nil && strings.Contains(schema, "FOREIGN KEY (member_id)") {
+		slog.Info("Migrating responses table to remove member_id constraint")
+		migration := `
+			BEGIN TRANSACTION;
+			CREATE TABLE responses_new (
+				id TEXT PRIMARY KEY,
+				council_id TEXT NOT NULL,
+				member_id TEXT NOT NULL,
+				round INTEGER NOT NULL DEFAULT 1,
+				content TEXT NOT NULL,
+				created_at DATETIME NOT NULL,
+				FOREIGN KEY (council_id) REFERENCES councils(id) ON DELETE CASCADE
+			);
+			INSERT INTO responses_new (id, council_id, member_id, round, content, created_at)
+			SELECT id, council_id, member_id, round, content, created_at FROM responses;
+			DROP TABLE responses;
+			ALTER TABLE responses_new RENAME TO responses;
+			CREATE INDEX IF NOT EXISTS idx_responses_council_id ON responses(council_id);
+			COMMIT;
+		`
+		_, err := s.db.Exec(migration)
+		if err != nil {
+			slog.Error("Failed to migrate responses table", "error", err)
+			s.db.Exec("ROLLBACK;")
+		}
+	}
 }
 
 // Close closes the database connection.

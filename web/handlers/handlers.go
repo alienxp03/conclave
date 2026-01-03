@@ -29,10 +29,11 @@ var templateFS embed.FS
 
 // Handler holds dependencies for HTTP handlers.
 type Handler struct {
-	engine    *engine.Engine
-	registry  *provider.Registry
-	storage   storage.Storage
-	templates *template.Template
+	engine        *engine.Engine
+	councilEngine *council.Engine
+	registry      *provider.Registry
+	storage       storage.Storage
+	templates     *template.Template
 }
 
 // New creates a new Handler.
@@ -78,10 +79,11 @@ func New(store storage.Storage, registry *provider.Registry) *Handler {
 	}
 
 	return &Handler{
-		engine:    engine.New(store, registry),
-		registry:  registry,
-		storage:   store,
-		templates: tmpl,
+		engine:        engine.New(store, registry),
+		councilEngine: council.New(store, registry),
+		registry:      registry,
+		storage:       store,
+		templates:     tmpl,
 	}
 }
 
@@ -580,8 +582,7 @@ func (h *Handler) handleAPICouncilFollowUp(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	councilEngine := council.New(h.storage, h.registry)
-	if err := councilEngine.AddFollowUp(r.Context(), id, req.Content); err != nil {
+	if err := h.councilEngine.AddFollowUp(r.Context(), id, req.Content); err != nil {
 		h.jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -657,8 +658,7 @@ func (h *Handler) handleAPICreateCouncil(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	councilEngine := council.New(h.storage, h.registry)
-	c, err := councilEngine.CreateCouncil(r.Context(), req.NewCouncilConfig)
+	c, err := h.councilEngine.CreateCouncil(r.Context(), req.NewCouncilConfig)
 	if err != nil {
 		h.jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -668,7 +668,7 @@ func (h *Handler) handleAPICreateCouncil(w http.ResponseWriter, r *http.Request)
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
-			councilEngine.RunCouncil(ctx, c)
+			h.councilEngine.RunCouncil(ctx, c)
 		}()
 	}
 
@@ -703,8 +703,6 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 		slog.Debug("Sent SSE event", "event", event, "data_len", len(jsonData))
 	}
 
-	councilEngine := council.New(h.storage, h.registry)
-
 	// Get council to make sure it exists
 	c, err := h.storage.GetCouncil(id)
 	if err != nil {
@@ -717,22 +715,34 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 	responses, _ := h.storage.GetResponses(id)
 	for _, r := range responses {
 		sendEvent("response_collected", map[string]interface{}{
-			"agent_id": r.MemberID,
-			"content":  r.Content,
+			"id":         r.ID,
+			"council_id": r.CouncilID,
+			"member_id":  r.MemberID,
+			"agent_id":   r.MemberID, // for backward compat with UI
+			"round":      r.Round,
+			"content":    r.Content,
+			"created_at": r.CreatedAt,
 		})
 	}
 
 	rankings, _ := h.storage.GetRankings(id)
 	for _, r := range rankings {
 		sendEvent("ranking_collected", map[string]interface{}{
-			"agent_id": r.ReviewerID,
-			"content":  r.Reasoning,
+			"id":          r.ID,
+			"council_id":  r.CouncilID,
+			"reviewer_id": r.ReviewerID,
+			"agent_id":    r.ReviewerID, // for backward compat with UI
+			"round":       r.Round,
+			"content":     r.Reasoning,
+			"reasoning":   r.Reasoning,
+			"created_at":  r.CreatedAt,
 		})
 	}
 
-	if len(c.Syntheses) > 0 {
-		sendEvent("synthesis_complete", map[string]string{
-			"synthesis": c.Syntheses[len(c.Syntheses)-1].Content,
+	for _, s := range c.Syntheses {
+		sendEvent("synthesis_complete", map[string]interface{}{
+			"round":     s.Round,
+			"synthesis": s.Content,
 		})
 	}
 
@@ -762,11 +772,28 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 		callbacks := &council.CouncilCallbacks{
 			OnResponseCollected: func(resp core.Response) {
 				slog.Debug("Response collected callback", "agent", resp.MemberID)
-				sendEvent("response_collected", resp)
+				sendEvent("response_collected", map[string]interface{}{
+					"id":         resp.ID,
+					"council_id": resp.CouncilID,
+					"member_id":  resp.MemberID,
+					"agent_id":   resp.MemberID,
+					"round":      resp.Round,
+					"content":    resp.Content,
+					"created_at": resp.CreatedAt,
+				})
 			},
 			OnRankingCollected: func(ranking core.Ranking) {
 				slog.Debug("Ranking collected callback", "agent", ranking.ReviewerID)
-				sendEvent("ranking_collected", ranking)
+				sendEvent("ranking_collected", map[string]interface{}{
+					"id":          ranking.ID,
+					"council_id":  ranking.CouncilID,
+					"reviewer_id": ranking.ReviewerID,
+					"agent_id":    ranking.ReviewerID,
+					"round":       ranking.Round,
+					"content":     ranking.Reasoning,
+					"reasoning":   ranking.Reasoning,
+					"created_at":  ranking.CreatedAt,
+				})
 			},
 			OnSynthesisComplete: func(synthesis core.CouncilSynthesis) {
 				slog.Debug("Synthesis complete callback")
@@ -792,7 +819,7 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 			slog.Debug("Stream context done", "id", id, "error", ctx.Err())
 		}()
 
-		err := councilEngine.RunCouncilWithCallbacks(ctx, c, callbacks)
+		err := h.councilEngine.RunCouncilWithCallbacks(ctx, c, callbacks)
 		if err != nil {
 			slog.Error("Council execution failed", "id", id, "error", err)
 			sendEvent("error", map[string]string{"message": err.Error()})
@@ -824,9 +851,15 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 				// Send new responses
 				if len(currResponses) > lastResponseCount {
 					for i := lastResponseCount; i < len(currResponses); i++ {
+						r := currResponses[i]
 						sendEvent("response_collected", map[string]interface{}{
-							"agent_id": currResponses[i].MemberID,
-							"content":  currResponses[i].Content,
+							"id":         r.ID,
+							"council_id": r.CouncilID,
+							"member_id":  r.MemberID,
+							"agent_id":   r.MemberID,
+							"round":      r.Round,
+							"content":    r.Content,
+							"created_at": r.CreatedAt,
 						})
 					}
 					lastResponseCount = len(currResponses)
@@ -838,9 +871,16 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 				// Send new rankings
 				if len(currRankings) > lastRankingCount {
 					for i := lastRankingCount; i < len(currRankings); i++ {
+						r := currRankings[i]
 						sendEvent("ranking_collected", map[string]interface{}{
-							"agent_id": currRankings[i].ReviewerID,
-							"content":  currRankings[i].Reasoning,
+							"id":          r.ID,
+							"council_id":  r.CouncilID,
+							"reviewer_id": r.ReviewerID,
+							"agent_id":    r.ReviewerID,
+							"round":       r.Round,
+							"content":     r.Reasoning,
+							"reasoning":   r.Reasoning,
+							"created_at":  r.CreatedAt,
 						})
 					}
 					lastRankingCount = len(currRankings)
@@ -852,8 +892,10 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 				// Send synthesis
 				if len(currCouncil.Syntheses) > lastSynthesisCount {
 					for i := lastSynthesisCount; i < len(currCouncil.Syntheses); i++ {
-						sendEvent("synthesis_complete", map[string]string{
-							"synthesis": currCouncil.Syntheses[i].Content,
+						s := currCouncil.Syntheses[i]
+						sendEvent("synthesis_complete", map[string]interface{}{
+							"round":     s.Round,
+							"synthesis": s.Content,
 						})
 					}
 					lastSynthesisCount = len(currCouncil.Syntheses)

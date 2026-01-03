@@ -1,5 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import type { ReactNode } from 'react';
 
 export type MessageRole = 'agent' | 'user' | 'system';
@@ -14,6 +15,8 @@ export interface MessageProps {
   metadata?: string;
   children: ReactNode;
 }
+
+const markdownPlugins = [remarkGfm, remarkBreaks];
 
 const colorClasses = {
   primary: {
@@ -72,9 +75,9 @@ function MessageRoot({ role, name, avatar, agentColor = 'primary', isStreaming, 
             )}
           </div>
           <div className="bg-brand-card bg-opacity-60 rounded-xl p-4 border border-brand-border">
-            <div className="text-[#d3c6aa] leading-relaxed text-base prose prose-invert max-w-none">
+            <div className="text-[#d3c6aa] leading-relaxed text-base prose prose-invert prose-p:leading-relaxed prose-pre:bg-[#2b3339] prose-pre:border prose-pre:border-brand-border max-w-none">
               {typeof children === 'string' ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={markdownPlugins}>{children}</ReactMarkdown>
               ) : (
                 children
               )}
@@ -108,9 +111,9 @@ function MessageRoot({ role, name, avatar, agentColor = 'primary', isStreaming, 
           )}
         </div>
         <div className={`bg-brand-card bg-opacity-40 rounded-xl p-4 border ${colors.border} border-opacity-20 hover:shadow-xl transition-shadow`}>
-          <div className="text-[#d3c6aa] leading-relaxed text-base prose prose-invert max-w-none">
+          <div className="text-[#d3c6aa] leading-relaxed text-base prose prose-invert prose-p:leading-relaxed prose-pre:bg-[#2b3339] prose-pre:border prose-pre:border-brand-border max-w-none">
             {typeof children === 'string' ? (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={markdownPlugins}>{children}</ReactMarkdown>
             ) : (
               children
             )}
@@ -125,9 +128,9 @@ function MessageRoot({ role, name, avatar, agentColor = 'primary', isStreaming, 
 // Composable subcomponents following assistant-ui pattern
 function MessageContent({ children }: { children: ReactNode }) {
   return (
-    <div className="text-[#d3c6aa] leading-relaxed text-base prose prose-invert max-w-none">
+    <div className="text-[#d3c6aa] leading-relaxed text-base prose prose-invert prose-p:leading-relaxed prose-pre:bg-[#2b3339] prose-pre:border prose-pre:border-brand-border max-w-none">
       {typeof children === 'string' ? (
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{children}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={markdownPlugins}>{children}</ReactMarkdown>
       ) : (
         children
       )}

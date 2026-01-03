@@ -157,6 +157,7 @@ export interface CouncilResponse {
   id: string;
   council_id: string;
   member_id: string;
+  agent_id: string; // for compatibility
   round: number;
   content: string;
   created_at: string;
@@ -166,6 +167,7 @@ export interface CouncilRanking {
   id: string;
   council_id: string;
   reviewer_id: string;
+  agent_id: string; // for compatibility
   round: number;
   rankings: string[];
   reasoning: string;

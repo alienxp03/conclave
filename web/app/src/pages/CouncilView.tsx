@@ -68,7 +68,16 @@ export function CouncilView() {
       const payload = JSON.parse(e.data);
       // Payload for synthesis streaming might not have round yet, default to latest
       setStreamData(prev => {
-        const round = payload.round || Math.max(1, ...Object.values(prev.responses).map(r => r.round));
+        const validRounds = Object.values(prev.responses)
+          .map(r => r.round)
+          .filter(r => typeof r === 'number' && !isNaN(r) && r > 0);
+        const round = payload.round || (validRounds.length > 0 ? Math.max(...validRounds) : 1);
+
+        // Only add synthesis if we have a valid round number
+        if (typeof round !== 'number' || isNaN(round) || round <= 0) {
+          return prev;
+        }
+
         return {
           ...prev,
           syntheses: { ...prev.syntheses, [round]: { round, content: payload.synthesis, created_at: new Date().toISOString() } }
@@ -93,6 +102,13 @@ export function CouncilView() {
     e.preventDefault();
     if (!followUp.trim() || followUpMutation.isPending) return;
     followUpMutation.mutate(followUp.trim());
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleFollowUp(e as any);
+    }
   };
 
   if (isLoading) {
@@ -120,13 +136,17 @@ export function CouncilView() {
 
   const { council, responses: savedResponses, rankings: savedRankings } = data;
 
-  // Merge everything by round
+  // Merge everything by round and filter out invalid rounds
   const rounds = Array.from(new Set([
     ...(savedResponses?.map(r => r.round) || []),
     ...(Object.values(streamData.responses).map(r => r.round)),
     ...(council.syntheses?.map(s => s.round) || []),
     ...(Object.values(streamData.syntheses).map(s => s.round))
-  ])).sort((a, b) => a - b);
+  ]))
+    .filter(round => typeof round === 'number' && !isNaN(round) && round > 0)
+    .sort((a, b) => a - b);
+
+  const currentRound = rounds.length > 0 ? Math.max(...rounds) : 1;
 
   return (
     <div className="max-w-6xl mx-auto py-4 px-4 space-y-12">
@@ -156,7 +176,7 @@ export function CouncilView() {
       </div>
 
       {/* Resume Status Indicator */}
-      {council.status === 'in_progress' && rounds.length > 1 && (
+      {council.status === 'in_progress' && rounds.length > 0 && (
         <div className="animate-fadeIn bg-gradient-to-r from-blue-500/10 via-brand-primary/10 to-blue-500/10 border-2 border-blue-500/30 rounded-xl p-5 shadow-lg">
           <div className="flex items-center gap-4">
             <div className="relative">
@@ -164,9 +184,11 @@ export function CouncilView() {
               <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
             </div>
             <div className="flex-1">
-              <div className="text-blue-400 font-bold text-lg">Re-convening Council</div>
+              <div className="text-blue-400 font-bold text-lg">
+                {rounds.length > 1 ? 'Re-convening Council' : 'Council Convening'}
+              </div>
               <div className="text-sm text-[#859289]">
-                Round {Math.max(...rounds)} in progress - members are responding to your directive...
+                Round {rounds.length > 0 ? Math.max(...rounds) : 1} in progress - members are {rounds.length > 1 ? 'responding to your directive' : 'analyzing the topic'}...
               </div>
             </div>
             <div className="flex items-center gap-2 text-xs text-[#859289] bg-brand-bg/50 px-3 py-1.5 rounded-full">
@@ -233,14 +255,16 @@ export function CouncilView() {
 
       {/* Rounds */}
       {rounds.map((round) => {
-        const roundResponses = [
+        const roundResponses = Array.from(new Map([
           ...(savedResponses?.filter(r => r.round === round) || []),
           ...Object.values(streamData.responses).filter(r => r.round === round)
-        ];
-        const roundRankings = [
+        ].map(r => [r.id, r])).values());
+
+        const roundRankings = Array.from(new Map([
           ...(savedRankings?.filter(r => r.round === round) || []),
           ...Object.values(streamData.rankings).filter(r => r.round === round)
-        ];
+        ].map(r => [r.id || `${r.round}-${r.reviewer_id}`, r])).values());
+
         const roundSynthesis = council.syntheses?.find(s => s.round === round) || streamData.syntheses[round];
 
         // Helper function to get member color
@@ -255,13 +279,26 @@ export function CouncilView() {
           return emojis[memberIndex % emojis.length];
         };
 
+        // Filter members who have responses/rankings to prevent empty stage boxes
+        const membersWithResponses = council.members.filter(member =>
+          roundResponses.find(r => r.member_id === member.id)
+        );
+        const membersWithRankings = council.members.filter(member =>
+          roundRankings.find(r => r.reviewer_id === member.id)
+        );
+
+        const isStage1Complete = membersWithResponses.length === council.members.length;
+        const isStage2Complete = membersWithRankings.length === council.members.length;
+        const isLatestRound = round === currentRound;
+        const isInProgress = council.status === 'in_progress' && isLatestRound;
+
         return (
           <RoundContainer
             key={round}
             roundNumber={round}
             stage={roundSynthesis ? '✓ Synthesized' : `${roundResponses.filter(r => r.member_id !== 'user').length}/${council.members.length} responses`}
           >
-            {/* Stage 1: Member Perspectives */}
+            {/* User message */}
             {roundResponses.filter(r => r.member_id === 'user').map(userMsg => (
               <Message.Root
                 key={userMsg.id}
@@ -273,75 +310,174 @@ export function CouncilView() {
               </Message.Root>
             ))}
 
-            {roundResponses.filter(r => r.member_id !== 'user').length > 0 && (
-              <Message.Root role="system">
-                <span className="text-xs font-bold uppercase tracking-wider">Stage 1: Member Perspectives</span>
-              </Message.Root>
-            )}
-
-            {council.members.map((member, idx) => {
-              const response = roundResponses.find(r => r.member_id === member.id);
-              if (!response) return null;
-
-              return (
-                <Message.Root
-                  key={response.id}
-                  role="agent"
-                  name={member.name}
-                  avatar={getMemberEmoji(idx)}
-                  agentColor={getMemberColor(idx)}
-                  timestamp={response.created_at}
-                >
-                  {response.content}
+            {/* Stage 1: Member Perspectives */}
+            {(membersWithResponses.length > 0 || (isInProgress && !isStage1Complete)) && (
+              <>
+                <Message.Root role="system">
+                  <span className="text-xs font-bold uppercase tracking-wider">Stage 1: Member Perspectives</span>
                 </Message.Root>
-              );
-            })}
+
+                {membersWithResponses.map((member) => {
+                  const memberIndex = council.members.findIndex(m => m.id === member.id);
+                  const response = roundResponses.find(r => r.member_id === member.id);
+
+                  return (
+                    <Message.Root
+                      key={response!.id}
+                      role="agent"
+                      name={member.name}
+                      avatar={getMemberEmoji(memberIndex)}
+                      agentColor={getMemberColor(memberIndex)}
+                      timestamp={response!.created_at}
+                    >
+                      {response!.content}
+                    </Message.Root>
+                  );
+                })}
+
+                {isInProgress && !isStage1Complete && (
+                  <div className="p-6 bg-brand-bg/30 rounded-xl border border-dashed border-brand-border animate-pulse flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-brand-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                        <div className="w-2 h-2 bg-brand-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                        <div className="w-2 h-2 bg-brand-primary rounded-full animate-bounce"></div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-[#d3c6aa]">Deliberating...</div>
+                        <div className="text-xs text-[#859289]">
+                          {council.members.length - membersWithResponses.length} members are preparing their perspectives
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs font-mono text-[#859289] bg-brand-bg px-2 py-1 rounded">
+                      STAGE 1 / 3
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
             {/* Stage 2: Peer Evaluations */}
-            {roundRankings.length > 0 && (
-              <Message.Root role="system">
-                <span className="text-xs font-bold uppercase tracking-wider">Stage 2: Peer Evaluations</span>
-              </Message.Root>
+            {(membersWithRankings.length > 0 || (isInProgress && isStage1Complete && !isStage2Complete)) && (
+              <>
+                <Message.Root role="system">
+                  <span className="text-xs font-bold uppercase tracking-wider">Stage 2: Peer Evaluations</span>
+                </Message.Root>
+
+                {membersWithRankings.map((member) => {
+                  const memberIndex = council.members.findIndex(m => m.id === member.id);
+                  const ranking = roundRankings.find(r => r.reviewer_id === member.id);
+
+                  return (
+                    <Message.Root
+                      key={`${ranking!.round}-${ranking!.reviewer_id}`}
+                      role="agent"
+                      name={`${member.name} (Evaluation)`}
+                      avatar="📊"
+                      agentColor={getMemberColor(memberIndex)}
+                      timestamp={ranking!.created_at}
+                    >
+                      {ranking!.reasoning}
+                    </Message.Root>
+                  );
+                })}
+
+                {isInProgress && isStage1Complete && !isStage2Complete && (
+                  <div className="p-6 bg-brand-bg/30 rounded-xl border border-dashed border-brand-border animate-pulse flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-brand-secondary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                        <div className="w-2 h-2 bg-brand-secondary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                        <div className="w-2 h-2 bg-brand-secondary rounded-full animate-bounce"></div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-[#d3c6aa]">Evaluating Perspectives...</div>
+                        <div className="text-xs text-[#859289]">
+                          Members are reviewing and ranking each other's responses
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs font-mono text-[#859289] bg-brand-bg px-2 py-1 rounded">
+                      STAGE 2 / 3
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
-            {council.members.map((member, idx) => {
-              const ranking = roundRankings.find(r => r.reviewer_id === member.id);
-              if (!ranking) return null;
-
-              return (
-                <Message.Root
-                  key={`${ranking.round}-${ranking.reviewer_id}`}
-                  role="agent"
-                  name={`${member.name} (Evaluation)`}
-                  avatar="📊"
-                  agentColor={getMemberColor(idx)}
-                  timestamp={ranking.created_at}
-                >
-                  {ranking.reasoning}
-                </Message.Root>
-              );
-            })}
-
             {/* Stage 3: Synthesis */}
-            {roundSynthesis && (
+            {(roundSynthesis || (isInProgress && isStage2Complete)) && (
               <>
                 <Message.Root role="system">
                   <span className="text-xs font-bold uppercase tracking-wider">Stage 3: Chairman's Synthesis</span>
                 </Message.Root>
-                <Message.Root
-                  role="agent"
-                  name={council.chairman.name}
-                  avatar="🏛️"
-                  agentColor="primary"
-                  timestamp={roundSynthesis.created_at}
-                >
-                  {roundSynthesis.content}
-                </Message.Root>
+                {roundSynthesis ? (
+                  <Message.Root
+                    role="agent"
+                    name={council.chairman.name}
+                    avatar="🏛️"
+                    agentColor="primary"
+                    timestamp={roundSynthesis.created_at}
+                  >
+                    {roundSynthesis.content}
+                  </Message.Root>
+                ) : (
+                  <div className="p-6 bg-brand-bg/30 rounded-xl border border-dashed border-brand-border animate-pulse flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-brand-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                        <div className="w-2 h-2 bg-brand-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                        <div className="w-2 h-2 bg-brand-primary rounded-full animate-bounce"></div>
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-[#d3c6aa]">Finalizing Synthesis...</div>
+                        <div className="text-xs text-[#859289]">
+                          Chairman {council.chairman.name} is consolidating the council's findings
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-xs font-mono text-[#859289] bg-brand-bg px-2 py-1 rounded">
+                      STAGE 3 / 3
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </RoundContainer>
         );
       })}
+
+      {/* Empty state while starting */}
+      {rounds.length === 0 && council.status === 'in_progress' && (
+        <div className="animate-fadeIn bg-gradient-to-br from-brand-card to-brand-bg shadow-2xl rounded-2xl p-20 text-center border border-brand-border relative overflow-hidden">
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute top-10 left-10 w-32 h-32 bg-brand-primary rounded-full blur-3xl" />
+            <div className="absolute bottom-10 right-10 w-32 h-32 bg-brand-secondary rounded-full blur-3xl" />
+          </div>
+          <div className="relative z-10">
+            <div className="inline-block p-6 bg-brand-bg rounded-full mb-6 shadow-lg">
+              <svg
+                className="h-20 w-20 text-brand-primary animate-pulse"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                />
+              </svg>
+            </div>
+            <h3 className="text-3xl font-bold text-white mb-3">Council is convening...</h3>
+            <p className="text-gray-400 text-lg max-w-md mx-auto">
+              Council members are analyzing the topic and preparing their perspectives.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Follow-up Input */}
       {council.status === 'completed' && (
@@ -362,6 +498,7 @@ export function CouncilView() {
             <textarea
               value={followUp}
               onChange={(e) => setFollowUp(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder="e.g., Now consider this from a historical perspective..."
               rows={3}
               className="w-full bg-brand-bg border-2 border-brand-border rounded-xl p-4 text-[#d3c6aa] focus:border-brand-primary outline-none transition-all"

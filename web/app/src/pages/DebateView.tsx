@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { api } from '../lib/api';
 import { useDebateStream } from '../hooks/useDebateStream';
 import { Message } from '../components/Message';
@@ -67,6 +68,13 @@ export function DebateView() {
     e.preventDefault();
     if (!followUp.trim() || followUpMutation.isPending) return;
     followUpMutation.mutate(followUp.trim());
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleFollowUp(e as any);
+    }
   };
 
   if (isLoading) {
@@ -397,7 +405,7 @@ export function DebateView() {
                         {roundConclusion.agreed ? 'Consensus Reached' : 'Divergent Views'}
                       </div>
                       <div className="text-xs text-[#9da9a0]">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
                           {roundConclusion.summary}
                         </ReactMarkdown>
                       </div>
@@ -459,6 +467,7 @@ export function DebateView() {
               <textarea
                 value={followUp}
                 onChange={(e) => setFollowUp(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="e.g., Consider the environmental impact as well..."
                 rows={3}
                 className="w-full bg-brand-bg border-2 border-brand-border rounded-xl p-4 text-[#d3c6aa] focus:border-brand-primary outline-none transition-all"
