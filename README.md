@@ -34,10 +34,10 @@ make install
 Start the web server:
 
 ```bash
-conclave serve --port 8080
+conclave serve
 ```
 
-Open `http://localhost:8080` in your browser to:
+Open `http://localhost:8182` in your browser to:
 - **Create Councils** — Set up multi-agent deliberations with custom personas
 - **Watch Live** — Real-time streaming debates with character-by-character rendering
 - **Browse History** — View, search, and manage past sessions
