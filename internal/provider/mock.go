@@ -42,6 +42,12 @@ func (p *MockProvider) Generate(ctx context.Context, prompt string) (string, err
 
 // GenerateWithModel generates a simulated response with a specific model.
 func (p *MockProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+	return p.GenerateWithDir(ctx, prompt, model, "")
+}
+
+// GenerateWithDir generates a simulated response with a specific model and directory.
+func (p *MockProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
+	slog.Info("Mock provider generating response", "prompt_len", len(prompt), "dir", dir)
 	return p.Generate(ctx, prompt)
 }
 

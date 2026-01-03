@@ -31,6 +31,9 @@ func (m *MockProvider) Generate(ctx context.Context, prompt string) (string, err
 func (m *MockProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
 	return m.Generate(ctx, prompt)
 }
+func (m *MockProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
+	return m.Generate(ctx, prompt)
+}
 func (m *MockProvider) Models() []string       { return []string{"test-model"} }
 func (m *MockProvider) DefaultModel() string   { return "test-model" }
 func (m *MockProvider) Timeout() time.Duration { return 2 * time.Minute }
@@ -60,7 +63,7 @@ func setupTestEngine(t *testing.T) (*Engine, func()) {
 		responses: []string{"Response 1", "Response 2", "CONSENSUS: yes\nSUMMARY: Both agreed"},
 	})
 
-	eng := New(store, registry)
+	eng := New(store, registry, nil)
 
 	cleanup := func() {
 		store.Close()

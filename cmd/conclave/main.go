@@ -23,14 +23,16 @@ import (
 	"github.com/alienxp03/conclave/internal/provider"
 	"github.com/alienxp03/conclave/internal/storage"
 	"github.com/alienxp03/conclave/internal/style"
+	"github.com/alienxp03/conclave/internal/workspace"
 	"github.com/alienxp03/conclave/web/handlers"
 )
 
 var (
-	dbPath    string
-	cfgPath   string
-	debug     bool
-	appConfig *config.Config
+	dbPath     string
+	cfgPath    string
+	debug      bool
+	appConfig  *config.Config
+	workspaces *workspace.Manager
 )
 
 func main() {
@@ -68,6 +70,14 @@ argue, collaborate, or analyze from multiple perspectives.`,
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
 		}
+
+		// Initialize workspaces
+		workspaces, err = workspace.NewManager()
+		if err != nil {
+			// Don't fail if workspaces can't be loaded, just log
+			slog.Warn("Failed to initialize workspace manager", "error", err)
+		}
+
 		return nil
 	},
 }
@@ -327,7 +337,7 @@ func runNewTwoAgentDebate(cmd *cobra.Command, topic string) error {
 	defer store.Close()
 
 	registry := getRegistry()
-	eng := engine.New(store, registry)
+	eng := engine.New(store, registry, workspaces)
 
 	// Parse agent configs
 	providerA, modelA, personaA, err := parseAgentConfig(agentAFlag)
@@ -482,7 +492,7 @@ var listCmd = &cobra.Command{
 		}
 		defer store.Close()
 
-		eng := engine.New(store, getRegistry())
+		eng := engine.New(store, getRegistry(), workspaces)
 		debates, err := eng.ListDebates(50, 0)
 		if err != nil {
 			return err
@@ -537,7 +547,7 @@ var showCmd = &cobra.Command{
 		}
 		defer store.Close()
 
-		eng := engine.New(store, getRegistry())
+		eng := engine.New(store, getRegistry(), workspaces)
 		debateID, err := findDebateByPrefix(eng, args[0])
 		if err != nil {
 			return err
@@ -595,7 +605,7 @@ var deleteCmd = &cobra.Command{
 		}
 		defer store.Close()
 
-		eng := engine.New(store, getRegistry())
+		eng := engine.New(store, getRegistry(), workspaces)
 		debateID, err := findDebateByPrefix(eng, args[0])
 		if err != nil {
 			return err
@@ -631,7 +641,7 @@ Examples:
 		}
 		defer store.Close()
 
-		eng := engine.New(store, getRegistry())
+		eng := engine.New(store, getRegistry(), workspaces)
 		debateID, err := findDebateByPrefix(eng, args[0])
 		if err != nil {
 			return err
@@ -692,7 +702,7 @@ var lockCmd = &cobra.Command{
 			return fmt.Errorf("lock not supported for this storage type")
 		}
 
-		eng := engine.New(store, getRegistry())
+		eng := engine.New(store, getRegistry(), workspaces)
 		debateID, err := findDebateByPrefix(eng, args[0])
 		if err != nil {
 			return err
@@ -1339,7 +1349,7 @@ func init() {
 }
 
 func startWebServer(store storage.Storage, registry *provider.Registry, port int) error {
-	h := handlers.New(store, registry)
+	h := handlers.New(store, registry, workspaces)
 
 	mux := http.NewServeMux()
 	h.RegisterRoutes(mux)

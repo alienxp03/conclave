@@ -22,6 +22,7 @@ import (
 	"github.com/alienxp03/conclave/internal/provider"
 	"github.com/alienxp03/conclave/internal/storage"
 	"github.com/alienxp03/conclave/internal/style"
+	"github.com/alienxp03/conclave/internal/workspace"
 )
 
 //go:embed templates/*.html
@@ -34,10 +35,11 @@ type Handler struct {
 	registry      *provider.Registry
 	storage       storage.Storage
 	templates     *template.Template
+	workspaces    *workspace.Manager
 }
 
 // New creates a new Handler.
-func New(store storage.Storage, registry *provider.Registry) *Handler {
+func New(store storage.Storage, registry *provider.Registry, workspaces *workspace.Manager) *Handler {
 	funcMap := template.FuncMap{
 		"formatTime": func(t time.Time) string {
 			return t.Format("Jan 2, 2006 3:04 PM")
@@ -79,11 +81,12 @@ func New(store storage.Storage, registry *provider.Registry) *Handler {
 	}
 
 	return &Handler{
-		engine:        engine.New(store, registry),
+		engine:        engine.New(store, registry, workspaces),
 		councilEngine: council.New(store, registry),
 		registry:      registry,
 		storage:       store,
 		templates:     tmpl,
+		workspaces:    workspaces,
 	}
 }
 

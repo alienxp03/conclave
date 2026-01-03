@@ -27,6 +27,9 @@ func (m *TestProvider) Generate(ctx context.Context, prompt string) (string, err
 func (m *TestProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
 	return m.Generate(ctx, prompt)
 }
+func (m *TestProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
+	return m.Generate(ctx, prompt)
+}
 func (m *TestProvider) Models() []string       { return []string{"test-model"} }
 func (m *TestProvider) DefaultModel() string   { return "test-model" }
 func (m *TestProvider) Timeout() time.Duration { return 2 * time.Minute }
@@ -89,14 +92,14 @@ func TestRegistry(t *testing.T) {
 func TestDefaultRegistry(t *testing.T) {
 	r := DefaultRegistry()
 
-	// Should have all 5 providers registered (claude, codex, gemini, qwen, mock)
+	// Should have all 6 providers registered (claude, codex, gemini, qwen, opencode, mock)
 	providers := r.List()
-	if len(providers) != 5 {
-		t.Errorf("wrong count: got %d, want 5", len(providers))
+	if len(providers) != 6 {
+		t.Errorf("wrong count: got %d, want 6", len(providers))
 	}
 
 	// Check each provider exists
-	for _, name := range []string{"claude", "codex", "gemini", "qwen", "mock"} {
+	for _, name := range []string{"claude", "codex", "gemini", "qwen", "opencode", "mock"} {
 		_, err := r.Get(name)
 		if err != nil {
 			t.Errorf("provider %s not found", name)

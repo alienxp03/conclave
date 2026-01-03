@@ -17,19 +17,22 @@ import (
 	"github.com/alienxp03/conclave/internal/provider"
 	"github.com/alienxp03/conclave/internal/storage"
 	"github.com/alienxp03/conclave/internal/style"
+	"github.com/alienxp03/conclave/internal/workspace"
 )
 
 // Engine orchestrates debate sessions.
 type Engine struct {
-	storage  storage.Storage
-	registry *provider.Registry
+	storage    storage.Storage
+	registry   *provider.Registry
+	workspaces *workspace.Manager
 }
 
 // New creates a new debate engine.
-func New(store storage.Storage, registry *provider.Registry) *Engine {
+func New(store storage.Storage, registry *provider.Registry, workspaces *workspace.Manager) *Engine {
 	return &Engine{
-		storage:  store,
-		registry: registry,
+		storage:    store,
+		registry:   registry,
+		workspaces: workspaces,
 	}
 }
 
@@ -93,10 +96,25 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 
 	now := time.Now()
 	cwd, _ := os.Getwd()
+
+	// Resolve workspace if specified
+	if config.WorkspaceID != "" {
+		if e.workspaces != nil {
+			path, err := e.workspaces.ResolvePath(config.WorkspaceID)
+			if err != nil {
+				return nil, fmt.Errorf("invalid workspace ID: %w", err)
+			}
+			cwd = path
+		} else {
+			slog.Warn("Workspace ID provided but workspace manager is not initialized")
+		}
+	}
+
 	debate := &core.Debate{
-		ID:    core.GenerateID(),
-		Topic: config.Topic,
-		CWD:   cwd,
+		ID:          core.GenerateID(),
+		Topic:       config.Topic,
+		CWD:         cwd,
+		WorkspaceID: config.WorkspaceID,
 		AgentA: core.Agent{
 			ID:       core.GenerateID(),
 			Name:     fmt.Sprintf("Agent A (%s)", personaADef.Name),
@@ -441,9 +459,9 @@ Answer with only YES or NO.`, debate.Topic, history)
 
 	var response string
 	if debate.AgentA.Model != "" {
-		response, err = prov.GenerateWithModel(ctx, prompt, debate.AgentA.Model)
+		response, err = prov.GenerateWithDir(ctx, prompt, debate.AgentA.Model, debate.CWD)
 	} else {
-		response, err = prov.Generate(ctx, prompt)
+		response, err = prov.GenerateWithDir(ctx, prompt, prov.DefaultModel(), debate.CWD)
 	}
 
 	if err != nil {
@@ -477,9 +495,10 @@ func (e *Engine) executeTurn(ctx context.Context, debate *core.Debate, agent cor
 	// Generate response (with model if specified)
 	var response string
 	if agent.Model != "" {
-		response, err = prov.GenerateWithModel(ctx, prompt, agent.Model)
+		response, err = prov.GenerateWithDir(ctx, prompt, agent.Model, debate.CWD)
 	} else {
-		response, err = prov.Generate(ctx, prompt)
+		// Fallback to default model if not specified, but still pass dir
+		response, err = prov.GenerateWithDir(ctx, prompt, prov.DefaultModel(), debate.CWD)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate response: %w", err)
@@ -686,9 +705,9 @@ REASONING: [Brief explanation of your vote - 1-2 sentences]`, debate.Topic, hist
 
 	var response string
 	if agent.Model != "" {
-		response, err = prov.GenerateWithModel(ctx, votePrompt, agent.Model)
+		response, err = prov.GenerateWithDir(ctx, votePrompt, agent.Model, debate.CWD)
 	} else {
-		response, err = prov.Generate(ctx, votePrompt)
+		response, err = prov.GenerateWithDir(ctx, votePrompt, prov.DefaultModel(), debate.CWD)
 	}
 	if err != nil {
 		return nil, err
@@ -742,9 +761,9 @@ Use Markdown format.`, debate.Topic, history, consensusStatus)
 
 	var response string
 	if debate.AgentA.Model != "" {
-		response, err = prov.GenerateWithModel(ctx, summaryPrompt, debate.AgentA.Model)
+		response, err = prov.GenerateWithDir(ctx, summaryPrompt, debate.AgentA.Model, debate.CWD)
 	} else {
-		response, err = prov.Generate(ctx, summaryPrompt)
+		response, err = prov.GenerateWithDir(ctx, summaryPrompt, prov.DefaultModel(), debate.CWD)
 	}
 	if err != nil {
 		return "", err

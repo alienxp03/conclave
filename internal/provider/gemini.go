@@ -41,6 +41,11 @@ func (p *GeminiProvider) Generate(ctx context.Context, prompt string) (string, e
 
 // GenerateWithModel sends a prompt with a specific model.
 func (p *GeminiProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+	return p.GenerateWithDir(ctx, prompt, model, "")
+}
+
+// GenerateWithDir sends a prompt with a specific model and working directory.
+func (p *GeminiProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
 	args := []string{}
 
 	// Use JSON output format for structured responses
@@ -56,7 +61,7 @@ func (p *GeminiProvider) GenerateWithModel(ctx context.Context, prompt, model st
 	args = append(args, prompt)
 
 	start := time.Now()
-	rawOutput, err := p.Execute(ctx, args...)
+	rawOutput, err := p.ExecuteWithDir(ctx, dir, args...)
 	if err != nil {
 		return "", err
 	}

@@ -21,6 +21,7 @@ type Debate struct {
 	Title       string        `json:"title"`
 	Topic       string        `json:"topic"`
 	CWD         string        `json:"cwd"`
+	WorkspaceID string        `json:"workspace_id,omitempty"` // ID of the workspace (if any)
 	AgentA      Agent         `json:"agent_a"`
 	AgentB      Agent         `json:"agent_b"`
 	Style       string        `json:"style"`
@@ -74,22 +75,24 @@ type Conclusion struct {
 
 // DebateSummary is a lightweight representation for listing debates.
 type DebateSummary struct {
-	ID        string       `json:"id"`
-	Title     string       `json:"title"`
-	Topic     string       `json:"topic"`
-	CWD       string       `json:"cwd"`
-	Status    DebateStatus `json:"status"`
-	Style     string       `json:"style"`
-	AgentA    string       `json:"agent_a"` // "provider:persona"
-	AgentB    string       `json:"agent_b"`
-	TurnCount int          `json:"turn_count"`
-	ReadOnly  bool         `json:"read_only"`
-	CreatedAt time.Time    `json:"created_at"`
+	ID          string       `json:"id"`
+	Title       string       `json:"title"`
+	Topic       string       `json:"topic"`
+	CWD         string       `json:"cwd"`
+	WorkspaceID string       `json:"workspace_id,omitempty"`
+	Status      DebateStatus `json:"status"`
+	Style       string       `json:"style"`
+	AgentA      string       `json:"agent_a"` // "provider:persona"
+	AgentB      string       `json:"agent_b"`
+	TurnCount   int          `json:"turn_count"`
+	ReadOnly    bool         `json:"read_only"`
+	CreatedAt   time.Time    `json:"created_at"`
 }
 
 // NewDebateConfig holds the configuration for creating a new debate.
 type NewDebateConfig struct {
 	Topic          string `json:"topic"`
+	WorkspaceID    string `json:"workspace_id"`
 	AgentAProvider string `json:"agent_a_provider"`
 	AgentAModel    string `json:"agent_a_model"`
 	AgentAPersona  string `json:"agent_a_persona"`
@@ -123,6 +126,7 @@ type Council struct {
 	Title       string              `json:"title"`
 	Topic       string              `json:"topic"`
 	CWD         string              `json:"cwd"`
+	WorkspaceID string              `json:"workspace_id,omitempty"`
 	Members     []Agent             `json:"members"`
 	Chairman    Agent               `json:"chairman"`
 	Status      DebateStatus        `json:"status"`
@@ -159,6 +163,7 @@ type CouncilSummary struct {
 	Title       string       `json:"title"`
 	Topic       string       `json:"topic"`
 	CWD         string       `json:"cwd"`
+	WorkspaceID string       `json:"workspace_id,omitempty"`
 	Status      DebateStatus `json:"status"`
 	MemberCount int          `json:"member_count"`
 	CreatedAt   time.Time    `json:"created_at"`
@@ -166,9 +171,10 @@ type CouncilSummary struct {
 
 // NewCouncilConfig holds the configuration for creating a new council.
 type NewCouncilConfig struct {
-	Topic    string
-	Members  []MemberSpec
-	Chairman *MemberSpec // Optional, defaults to first member's provider with best model
+	Topic       string
+	WorkspaceID string
+	Members     []MemberSpec
+	Chairman    *MemberSpec // Optional, defaults to first member's provider with best model
 }
 
 // MemberSpec specifies a council member: provider[/model][:persona]

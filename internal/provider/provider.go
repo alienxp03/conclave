@@ -24,6 +24,9 @@ type Provider interface {
 	// GenerateWithModel sends a prompt with a specific model.
 	GenerateWithModel(ctx context.Context, prompt, model string) (string, error)
 
+	// GenerateWithDir sends a prompt with a specific model and working directory.
+	GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error)
+
 	// Available checks if the provider's CLI is installed and accessible.
 	Available() bool
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/alienxp03/conclave/internal/provider"
 	"github.com/alienxp03/conclave/internal/storage"
+	"github.com/alienxp03/conclave/internal/workspace"
 	"github.com/alienxp03/conclave/web/handlers"
 )
 
@@ -52,8 +53,14 @@ func main() {
 	// Initialize provider registry
 	registry := provider.DefaultRegistry()
 
+	// Initialize workspaces
+	workspaces, err := workspace.NewManager()
+	if err != nil {
+		slog.Warn("Failed to initialize workspace manager", "error", err)
+	}
+
 	// Create handler
-	h := handlers.New(store, registry)
+	h := handlers.New(store, registry, workspaces)
 
 	// Setup routes
 	mux := http.NewServeMux()

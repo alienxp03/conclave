@@ -118,8 +118,24 @@ func (l *limitedWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
+// GenerateWithDir sends a prompt with a specific model and working directory.
+func (p *BaseProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
+	// Base implementation doesn't know about specific flags, so it just calls GenerateWithModel
+	// Subclasses should override this if they need to pass the directory differently
+	// However, since BaseProvider doesn't implement GenerateWithModel (it's in the specific providers),
+	// this is a bit tricky.
+	// Actually, BaseProvider implements the common Execute method.
+	// Specific providers call Execute.
+	return "", fmt.Errorf("GenerateWithDir not implemented for %s", p.name)
+}
+
 // Execute runs the CLI command with the given arguments.
 func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string, error) {
+	return p.ExecuteWithDir(ctx, "", extraArgs...)
+}
+
+// ExecuteWithDir runs the CLI command with the given arguments in a specific directory.
+func (p *BaseProvider) ExecuteWithDir(ctx context.Context, dir string, extraArgs ...string) (string, error) {
 	// Validate executable before running
 	if err := p.ValidateExecutable(); err != nil {
 		return "", err
@@ -134,8 +150,12 @@ func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string
 		"provider", p.name,
 		"command", p.command,
 		"args", allArgs,
+		"dir", dir,
 	)
 	cmd := exec.CommandContext(ctx, p.command, allArgs...)
+	if dir != "" {
+		cmd.Dir = dir
+	}
 
 	// Use size-limited writers to prevent memory issues
 	var stdout, stderr bytes.Buffer

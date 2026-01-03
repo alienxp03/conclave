@@ -42,6 +42,11 @@ func (p *OpencodeProvider) Generate(ctx context.Context, prompt string) (string,
 
 // GenerateWithModel sends a prompt with a specific model.
 func (p *OpencodeProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+	return p.GenerateWithDir(ctx, prompt, model, "")
+}
+
+// GenerateWithDir sends a prompt with a specific model and working directory.
+func (p *OpencodeProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
 	args := []string{"run"}
 
 	if p.useJSON {
@@ -55,10 +60,10 @@ func (p *OpencodeProvider) GenerateWithModel(ctx context.Context, prompt, model 
 
 	args = append(args, prompt)
 
-	slog.Info("Opencode generating response", "model", model, "prompt_len", len(prompt))
+	slog.Info("Opencode generating response", "model", model, "prompt_len", len(prompt), "dir", dir)
 	slog.Debug("Opencode prompt", "content", prompt)
 
-	rawOutput, err := p.Execute(ctx, args...)
+	rawOutput, err := p.ExecuteWithDir(ctx, dir, args...)
 	if err != nil {
 		slog.Error("Opencode generation failed", "error", err)
 		return "", err

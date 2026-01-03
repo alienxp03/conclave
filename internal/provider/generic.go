@@ -27,6 +27,11 @@ func (p *GenericProvider) Generate(ctx context.Context, prompt string) (string, 
 
 // GenerateWithModel sends a prompt with a specific model.
 func (p *GenericProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
+	return p.GenerateWithDir(ctx, prompt, model, "")
+}
+
+// GenerateWithDir sends a prompt with a specific model and working directory.
+func (p *GenericProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
 	args := []string{}
 
 	// Add model flag if specified
@@ -35,5 +40,5 @@ func (p *GenericProvider) GenerateWithModel(ctx context.Context, prompt, model s
 	}
 
 	args = append(args, prompt)
-	return p.Execute(ctx, args...)
+	return p.ExecuteWithDir(ctx, dir, args...)
 }
