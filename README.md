@@ -1,104 +1,73 @@
 # conclave
 
-AI-powered debate and deliberation tool that orchestrates discussions between AI agents with diverse personas.
+AI-powered multi-agent deliberation platform that orchestrates debates and council discussions between AI agents with diverse personas.
+
+![conclave UI](docs/screenshot.png)
+
+> **Note:** This project is 99.9% vibe coded. Expect rough edges, experimental features, and the occasional surprise.
 
 ## Features
 
-- **Multi-Agent Councils**: Run discussions with N agents (not just 2) using a 3-stage pipeline (Responses → Ranking → Synthesis).
-- **Modern Web Interface**: A lightning-fast React 19 SPA with real-time character-by-character streaming (SSE).
-- **Multi-Provider Support**: Integrates with Claude, Gemini, Qwen, and OpenAI CLI tools.
-- **Dynamic Personas**: Create and manage custom AI personas (Optimist, Skeptic, Pragmatist, etc.) with unique system prompts.
-- **Flexible Debate Styles**: Built-in and custom styles (Adversarial, Collaborative, Socratic) that define how agents interact.
-- **Session History**: Persistent SQLite-based storage for all debates and council sessions.
-- **Export**: Save your deliberations as Markdown, PDF, or JSON.
+- **Multi-Agent Councils** — Run discussions with N agents using a 3-stage pipeline (Responses → Ranking → Synthesis)
+- **Real-Time Streaming UI** — React 19 SPA with character-by-character SSE streaming
+- **Multi-Provider Support** — Works with Claude, Gemini, Qwen, OpenCode, and other AI CLI tools
+- **Custom Personas** — Create AI agents with unique personalities (Optimist, Skeptic, Pragmatist, etc.)
+- **Debate Styles** — Choose from Adversarial, Collaborative, Socratic, or define your own
+- **Session History** — SQLite persistence for all debates and councils
+- **Export Options** — Save deliberations as Markdown, PDF, or JSON
 
 ## Installation
 
-### Prerequisites
-
-1. **Go 1.21+** installed.
-2. **Node.js & npm** (required to build the modern Web UI).
-3. At least one supported AI CLI tool:
-   - [Claude CLI](https://docs.anthropic.com/claude/docs/claude-cli) (`claude`)
-   - [Gemini CLI](https://cloud.google.com/vertex-ai/docs/generative-ai/start/quickstarts/quickstart-cli) (`gemini`)
-   - [Qwen CLI](https://github.com/QwenLM/Qwen) (`qwen`)
-
-### Build and Install
+**Prerequisites:** Go 1.21+, Node.js/npm, and at least one AI CLI tool ([Claude](https://docs.anthropic.com/claude/docs/claude-cli), [Gemini](https://cloud.google.com/vertex-ai/docs/generative-ai/start/quickstarts/quickstart-cli), [Qwen](https://github.com/QwenLM/Qwen), etc.)
 
 ```bash
 git clone https://github.com/alienxp03/conclave.git
 cd conclave
-
-# Build both CLI and the embedded React frontend
 make build
-
-# Install to ~/.local/bin
 make install
 ```
 
-## Quick Start (CLI)
+## Quick Start
 
-### 2-Agent Debates
+### CLI Usage
+
 ```bash
-# Basic debate (uses default agents)
+# Start a basic debate
 conclave new "Should we use Go for our next microservice?"
 
-# Specify agents, style, and turn limit
-conclave new "The merits of functional programming" \
-  -a claude/sonnet:optimist \
-  -b gemini:skeptic \
-  -s adversarial \
-  -t 5
-```
-
-### N-Agent Councils
-Councils use a multi-stage process where agents first respond, then rank each other's ideas, followed by a final synthesis.
-```bash
-# Start a 3-agent council
+# Multi-agent council with custom personas
 conclave new "Project Roadmap 2026" \
   --models claude:optimist,gemini:skeptic,qwen:pragmatist
+
+# View and manage sessions
+conclave list              # Session history
+conclave show <id>         # View details
+conclave export <id> pdf   # Export to PDF
 ```
 
-### Manage Knowledge
-```bash
-conclave list                # See session history
-conclave show <id>           # View turns and conclusion
-conclave export <id> pdf     # Export to PDF
-conclave lock <id>           # Prevent accidental deletion/modification
-```
-
-## Web Interface
-
-Start the web server to access the modern dashboard:
+### Web Interface
 
 ```bash
 conclave serve --port 8080
 ```
 
-Visit `http://localhost:8080` to:
-- **Watch Live**: See AI agents debate in real-time as text streams in.
-- **Manage History**: Browse, search, and delete past sessions.
-- **Configure**: Visually set up councils and debate parameters.
+Visit `http://localhost:8080` for:
+- Real-time streaming debates with character-by-character rendering
+- Session history browser
+- Visual council and debate configuration
 
-## Advanced Configuration
+### Advanced
 
-### Custom Personas
-Create your own agents to specialize the discussion:
 ```bash
-conclave persona create --id researcher --name "Deep Researcher" --prompt "You are a meticulous researcher..."
-conclave persona list
-```
+# Custom personas
+conclave persona create --id researcher --name "Deep Researcher" \
+  --prompt "You are a meticulous researcher..."
 
-### Debate Styles
-Define the tone and structure of the interaction:
-```bash
+# Manage debate styles
 conclave style list
 conclave style show socratic
-```
 
-### Config File
-Initialize a config file at `~/.conclave/config.yaml` to set default providers, models, and timeouts:
-```bash
+# Config file
 conclave config init
 conclave config show
 ```
@@ -107,36 +76,26 @@ conclave config show
 
 ```
 conclave/
-├── cmd/
-│   ├── conclave/          # Main CLI entry point
-│   └── server/         # Standalone web server
+├── cmd/              # CLI and server entry points
 ├── internal/
-│   ├── council/        # N-agent deliberation logic
-│   ├── engine/         # 2-agent debate orchestration
-│   ├── provider/       # AI provider abstractions (CLI wrappers)
-│   ├── storage/        # SQLite persistence layer
-│   └── ...             # Core, Config, Export, Persona, Style
+│   ├── council/      # N-agent deliberation logic
+│   ├── engine/       # 2-agent debate orchestration
+│   ├── provider/     # AI provider abstractions (CLI wrappers)
+│   ├── storage/      # SQLite persistence
+│   └── workspace/    # Project workspace management
 ├── web/
-│   ├── app/            # Modern React 19 Frontend (Vite + TS + Tailwind)
-│   └── handlers/       # Go HTTP handlers and SSE streaming logic
-└── bin/                # Compiled binaries
+│   ├── app/          # React 19 frontend (Vite + TS + Tailwind)
+│   └── handlers/     # HTTP handlers and SSE streaming
 ```
 
 ## Development
 
 ```bash
-# Run frontend dev server with hot reload
-make dev-frontend
-
-# Run backend with auto-reload (requires air)
-make dev-serve
-
-# Run full test suite
-make test
+make dev-frontend     # Frontend dev server with hot reload
+make dev-serve        # Backend with auto-reload (requires air)
+make test             # Run test suite
 ```
 
-## License 
+## License
 
 MIT
-
-```
