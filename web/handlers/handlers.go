@@ -104,6 +104,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/styles", h.handleAPIListStyles)
 	mux.HandleFunc("GET /api/system/info", h.handleAPISystemInfo)
 	mux.HandleFunc("POST /api/debates", h.handleAPICreateDebate)
+	mux.HandleFunc("POST /api/debates/{id}/followup", h.handleAPIDebateFollowUp)
+	mux.HandleFunc("POST /api/councils/{id}/followup", h.handleAPICouncilFollowUp)
 	mux.HandleFunc("DELETE /api/debates/{id}", h.handleAPIDeleteDebate)
 
 	// Actions (POST/DELETE endpoints)
@@ -540,6 +542,53 @@ func (h *Handler) handleAPIDeleteDebate(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (h *Handler) handleAPIDebateFollowUp(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Content == "" {
+		h.jsonError(w, "content is required", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.engine.AddFollowUp(r.Context(), id, req.Content); err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+func (h *Handler) handleAPICouncilFollowUp(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Content == "" {
+		h.jsonError(w, "content is required", http.StatusBadRequest)
+		return
+	}
+
+	councilEngine := council.New(h.storage, h.registry)
+	if err := councilEngine.AddFollowUp(r.Context(), id, req.Content); err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
 // Council Handlers
 
 func (h *Handler) handleAPIListCouncils(w http.ResponseWriter, r *http.Request) {
@@ -681,9 +730,9 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	if c.Synthesis != "" {
+	if len(c.Syntheses) > 0 {
 		sendEvent("synthesis_complete", map[string]string{
-			"synthesis": c.Synthesis,
+			"synthesis": c.Syntheses[len(c.Syntheses)-1].Content,
 		})
 	}
 
@@ -711,26 +760,19 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 	if c.Status == core.StatusPending || c.Status == core.StatusFailed {
 		slog.Info("Starting council execution via stream", "id", id)
 		callbacks := &council.CouncilCallbacks{
-			OnResponseCollected: func(agent core.Agent, response string) {
-				slog.Debug("Response collected callback", "agent", agent.Name)
-				sendEvent("response_collected", map[string]interface{}{
-					"agent_id":   agent.ID,
-					"agent_name": agent.Name,
-					"content":    response,
-				})
+			OnResponseCollected: func(resp core.Response) {
+				slog.Debug("Response collected callback", "agent", resp.MemberID)
+				sendEvent("response_collected", resp)
 			},
-			OnRankingCollected: func(agent core.Agent, ranking string) {
-				slog.Debug("Ranking collected callback", "agent", agent.Name)
-				sendEvent("ranking_collected", map[string]interface{}{
-					"agent_id":   agent.ID,
-					"agent_name": agent.Name,
-					"content":    ranking,
-				})
+			OnRankingCollected: func(ranking core.Ranking) {
+				slog.Debug("Ranking collected callback", "agent", ranking.ReviewerID)
+				sendEvent("ranking_collected", ranking)
 			},
-			OnSynthesisComplete: func(synthesis string) {
+			OnSynthesisComplete: func(synthesis core.CouncilSynthesis) {
 				slog.Debug("Synthesis complete callback")
-				sendEvent("synthesis_complete", map[string]string{
-					"synthesis": synthesis,
+				sendEvent("synthesis_complete", map[string]interface{}{
+					"round":     synthesis.Round,
+					"synthesis": synthesis.Content,
 				})
 			},
 			OnStageComplete: func(stage int) {
@@ -768,7 +810,7 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 
 		lastResponseCount := len(responses)
 		lastRankingCount := len(rankings)
-		hasSynthesis := c.Synthesis != ""
+		lastSynthesisCount := len(c.Syntheses)
 
 		for {
 			select {
@@ -808,11 +850,13 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Send synthesis
-				if !hasSynthesis && currCouncil.Synthesis != "" {
-					sendEvent("synthesis_complete", map[string]string{
-						"synthesis": currCouncil.Synthesis,
-					})
-					hasSynthesis = true
+				if len(currCouncil.Syntheses) > lastSynthesisCount {
+					for i := lastSynthesisCount; i < len(currCouncil.Syntheses); i++ {
+						sendEvent("synthesis_complete", map[string]string{
+							"synthesis": currCouncil.Syntheses[i].Content,
+						})
+					}
+					lastSynthesisCount = len(currCouncil.Syntheses)
 				}
 
 				if currCouncil.Status == core.StatusCompleted {

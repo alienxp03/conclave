@@ -17,20 +17,20 @@ const (
 
 // Debate represents a debate session between two AI agents.
 type Debate struct {
-	ID          string       `json:"id"`
-	Title       string       `json:"title"`
-	Topic       string       `json:"topic"`
-	CWD         string       `json:"cwd"`
-	AgentA      Agent        `json:"agent_a"`
-	AgentB      Agent        `json:"agent_b"`
-	Style       string       `json:"style"`
-	MaxTurns    int          `json:"max_turns"` // Turns per agent (total = MaxTurns * 2)
-	Status      DebateStatus `json:"status"`
-	ReadOnly    bool         `json:"read_only"` // If true, debate cannot be modified or deleted
-	Conclusion  *Conclusion  `json:"conclusion,omitempty"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
-	CompletedAt *time.Time   `json:"completed_at,omitempty"`
+	ID          string        `json:"id"`
+	Title       string        `json:"title"`
+	Topic       string        `json:"topic"`
+	CWD         string        `json:"cwd"`
+	AgentA      Agent         `json:"agent_a"`
+	AgentB      Agent         `json:"agent_b"`
+	Style       string        `json:"style"`
+	MaxTurns    int           `json:"max_turns"` // Turns per agent (total = MaxTurns * 2)
+	Status      DebateStatus  `json:"status"`
+	ReadOnly    bool          `json:"read_only"` // If true, debate cannot be modified or deleted
+	Conclusions []*Conclusion `json:"conclusions,omitempty"`
+	CreatedAt   time.Time     `json:"created_at"`
+	UpdatedAt   time.Time     `json:"updated_at"`
+	CompletedAt *time.Time    `json:"completed_at,omitempty"`
 }
 
 // Agent represents an AI agent participating in a debate.
@@ -46,8 +46,9 @@ type Agent struct {
 type Turn struct {
 	ID        string    `json:"id"`
 	DebateID  string    `json:"debate_id"`
-	AgentID   string    `json:"agent_id"`
-	Number    int       `json:"number"` // Turn number (1, 2, 3, ...)
+	AgentID   string    `json:"agent_id"` // "user" for user turns
+	Number    int       `json:"number"`   // Sequential turn number
+	Round     int       `json:"round"`    // Round number
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -59,8 +60,9 @@ type Vote struct {
 	Reasoning string `json:"reasoning"` // Why they voted this way
 }
 
-// Conclusion represents the outcome of a debate.
+// Conclusion represents the outcome of a debate round.
 type Conclusion struct {
+	Round          int    `json:"round"`
 	Agreed         bool   `json:"agreed"`
 	Summary        string `json:"summary"`
 	AgentASummary  string `json:"agent_a_summary,omitempty"`
@@ -108,19 +110,26 @@ func (d *Debate) TotalTurns() int {
 	return d.MaxTurns * 2
 }
 
+// CouncilSynthesis represents a chairman's synthesis for a specific round.
+type CouncilSynthesis struct {
+	Round     int       `json:"round"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // Council represents a multi-agent council session.
 type Council struct {
-	ID          string       `json:"id"`
-	Title       string       `json:"title"`
-	Topic       string       `json:"topic"`
-	CWD         string       `json:"cwd"`
-	Members     []Agent      `json:"members"`
-	Chairman    Agent        `json:"chairman"`
-	Status      DebateStatus `json:"status"`
-	Synthesis   string       `json:"synthesis,omitempty"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
-	CompletedAt *time.Time   `json:"completed_at,omitempty"`
+	ID          string              `json:"id"`
+	Title       string              `json:"title"`
+	Topic       string              `json:"topic"`
+	CWD         string              `json:"cwd"`
+	Members     []Agent             `json:"members"`
+	Chairman    Agent               `json:"chairman"`
+	Status      DebateStatus        `json:"status"`
+	Syntheses   []*CouncilSynthesis `json:"syntheses,omitempty"`
+	CreatedAt   time.Time           `json:"created_at"`
+	UpdatedAt   time.Time           `json:"updated_at"`
+	CompletedAt *time.Time          `json:"completed_at,omitempty"`
 }
 
 // Response represents a council member's response in Stage 1.
@@ -128,6 +137,7 @@ type Response struct {
 	ID        string    `json:"id"`
 	CouncilID string    `json:"council_id"`
 	MemberID  string    `json:"member_id"`
+	Round     int       `json:"round"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
 }
@@ -137,6 +147,7 @@ type Ranking struct {
 	ID         string    `json:"id"`
 	CouncilID  string    `json:"council_id"`
 	ReviewerID string    `json:"reviewer_id"`
+	Round      int       `json:"round"`
 	Rankings   []string  `json:"rankings"` // Ordered list of response IDs (best to worst)
 	Reasoning  string    `json:"reasoning,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`

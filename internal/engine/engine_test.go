@@ -310,8 +310,8 @@ func TestRunDebate(t *testing.T) {
 	if len(turns) != 4 {
 		t.Errorf("wrong stored turn count: got %d, want 4", len(turns))
 	}
-	if final.Conclusion == nil {
-		t.Error("conclusion is nil")
+	if len(final.Conclusions) == 0 {
+		t.Error("conclusions is empty")
 	}
 }
 

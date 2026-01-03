@@ -4,6 +4,7 @@ import type { Turn, Debate } from '../types';
 interface StreamingTurn {
   agentId: string;
   number: number;
+  round: number;
   content: string;
 }
 
@@ -12,6 +13,13 @@ export function useDebateStream(debateId: string | undefined, initialTurns: Turn
   const [streamingTurn, setStreamingTurn] = useState<StreamingTurn | null>(null);
   const [debate, setDebate] = useState<Debate | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Update turns if initialTurns changes (e.g. after a query refetch)
+  useEffect(() => {
+    if (initialTurns.length > turns.length) {
+      setTurns(initialTurns);
+    }
+  }, [initialTurns]);
 
   useEffect(() => {
     if (!debateId) return;
@@ -23,6 +31,7 @@ export function useDebateStream(debateId: string | undefined, initialTurns: Turn
       setStreamingTurn({
         agentId: data.agent_id,
         number: data.number,
+        round: data.round || 1,
         content: '',
       });
     });

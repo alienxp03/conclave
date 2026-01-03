@@ -169,9 +169,9 @@ Respond with ONLY the title. No punctuation.`, topic)
 
 // CouncilCallbacks contains callback functions for council progress.
 type CouncilCallbacks struct {
-	OnResponseCollected func(agent core.Agent, response string)
-	OnRankingCollected  func(agent core.Agent, ranking string)
-	OnSynthesisComplete func(synthesis string)
+	OnResponseCollected func(response core.Response)
+	OnRankingCollected  func(ranking core.Ranking)
+	OnSynthesisComplete func(synthesis core.CouncilSynthesis)
 	OnStageComplete     func(stage int)
 }
 
@@ -210,7 +210,7 @@ func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Coun
 
 	// Stage 1: Collect responses
 	slog.Debug("Stage 1: Collecting responses", "council_id", council.ID)
-	responses, err := e.CollectResponsesWithCallback(ctx, council, callbacks)
+	currentResponses, err := e.CollectResponsesWithCallback(ctx, council, callbacks)
 	if err != nil {
 		slog.Error("Stage 1 failed", "error", err)
 		council.Status = core.StatusFailed
@@ -223,7 +223,7 @@ func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Coun
 	}
 
 	// Save responses
-	for _, r := range responses {
+	for _, r := range currentResponses {
 		r := r // capture loop variable
 		if err := e.storage.AddResponse(&r); err != nil {
 			slog.Error("Failed to save response", "error", err)
@@ -233,7 +233,7 @@ func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Coun
 
 	// Stage 2: Collect rankings
 	slog.Debug("Stage 2: Collecting rankings", "council_id", council.ID)
-	rankings, err := e.CollectRankingsWithCallback(ctx, council, responses, callbacks)
+	currentRankings, err := e.CollectRankingsWithCallback(ctx, council, currentResponses, callbacks)
 	if err != nil {
 		slog.Error("Stage 2 failed", "error", err)
 		council.Status = core.StatusFailed
@@ -246,7 +246,7 @@ func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Coun
 	}
 
 	// Save rankings
-	for _, r := range rankings {
+	for _, r := range currentRankings {
 		r := r // capture loop variable
 		if err := e.storage.AddRanking(&r); err != nil {
 			slog.Error("Failed to save ranking", "error", err)
@@ -256,7 +256,7 @@ func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Coun
 
 	// Stage 3: Synthesis
 	slog.Debug("Stage 3: Generating synthesis", "council_id", council.ID)
-	synthesis, err := e.GenerateSynthesis(ctx, council, responses, rankings)
+	synthesisContent, err := e.GenerateSynthesis(ctx, council, currentResponses, currentRankings)
 	if err != nil {
 		slog.Error("Stage 3 failed", "error", err)
 		council.Status = core.StatusFailed
@@ -264,12 +264,23 @@ func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Coun
 		return fmt.Errorf("stage 3 failed: %w", err)
 	}
 
-	if callbacks != nil && callbacks.OnSynthesisComplete != nil {
-		callbacks.OnSynthesisComplete(synthesis)
+	// Update council
+	round := 1
+	if len(currentResponses) > 0 {
+		round = currentResponses[0].Round
 	}
 
-	// Update council
-	council.Synthesis = synthesis
+	synthesis := &core.CouncilSynthesis{
+		Round:     round,
+		Content:   synthesisContent,
+		CreatedAt: time.Now(),
+	}
+
+	if callbacks != nil && callbacks.OnSynthesisComplete != nil {
+		callbacks.OnSynthesisComplete(*synthesis)
+	}
+
+	council.Syntheses = append(council.Syntheses, synthesis)
 	council.Status = core.StatusCompleted
 	e.storage.UpdateCouncil(council)
 
@@ -292,10 +303,18 @@ func (e *Engine) CollectResponsesWithCallback(ctx context.Context, council *core
 
 	resultChan := make(chan responseResult, len(council.Members))
 
+	// Get current round
+	existingResponses, _ := e.storage.GetResponses(council.ID)
+	round := 1
+	if len(existingResponses) > 0 {
+		round = existingResponses[len(existingResponses)-1].Round
+	}
+
 	for _, member := range council.Members {
 		go func(agent core.Agent) {
 			// Build prompt
-			prompt, err := e.buildResponsePrompt(council.Topic, agent)
+			// If there are previous syntheses, include them in the prompt
+			prompt, err := e.buildResponsePromptWithHistory(council, agent, existingResponses)
 			if err != nil {
 				resultChan <- responseResult{agent: agent, err: fmt.Errorf("failed to build prompt for %s: %w", agent.Name, err)}
 				return
@@ -318,6 +337,7 @@ func (e *Engine) CollectResponsesWithCallback(ctx context.Context, council *core
 				ID:        core.GenerateID(),
 				CouncilID: council.ID,
 				MemberID:  agent.ID,
+				Round:     round,
 				Content:   content,
 				CreatedAt: time.Now(),
 			}
@@ -343,7 +363,7 @@ func (e *Engine) CollectResponsesWithCallback(ctx context.Context, council *core
 
 		// Call callback if provided
 		if callbacks != nil && callbacks.OnResponseCollected != nil {
-			callbacks.OnResponseCollected(result.agent, result.response.Content)
+			callbacks.OnResponseCollected(result.response)
 		}
 	}
 
@@ -402,10 +422,16 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 				return
 			}
 
+			round := 1
+			if len(responses) > 0 {
+				round = responses[0].Round
+			}
+
 			ranking := core.Ranking{
 				ID:         core.GenerateID(),
 				CouncilID:  council.ID,
 				ReviewerID: agent.ID,
+				Round:      round,
 				Rankings:   rankedIDs,
 				Reasoning:  content,
 				CreatedAt:  time.Now(),
@@ -432,7 +458,7 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 
 		// Call callback if provided
 		if callbacks != nil && callbacks.OnRankingCollected != nil {
-			callbacks.OnRankingCollected(result.agent, result.content)
+			callbacks.OnRankingCollected(result.ranking)
 		}
 	}
 
@@ -486,6 +512,88 @@ func (e *Engine) getPersona(name string) *persona.Persona {
 			SystemPrompt: customPersona.SystemPrompt,
 		}
 	}
+
+	return nil
+}
+
+func (e *Engine) buildResponsePromptWithHistory(council *core.Council, agent core.Agent, history []*core.Response) (string, error) {
+	// Get persona
+	personaDef := e.getPersona(agent.Persona)
+	if personaDef == nil {
+		return "", fmt.Errorf("persona not found: %s", agent.Persona)
+	}
+
+	// Build history text
+	var historyText strings.Builder
+	if len(council.Syntheses) > 0 {
+		historyText.WriteString("\nPrevious round syntheses:\n")
+		for _, s := range council.Syntheses {
+			historyText.WriteString(fmt.Sprintf("\nRound %d Synthesis:\n%s\n", s.Round, s.Content))
+		}
+	}
+
+	// Check if there's a user directive in the current round
+	var directive string
+	round := 1
+	if len(history) > 0 {
+		round = history[len(history)-1].Round
+	}
+	for _, r := range history {
+		if r.Round == round && r.MemberID == "user" {
+			directive = r.Content
+			break
+		}
+	}
+
+	prompt := fmt.Sprintf(`%s
+
+Topic: %s
+%s`, personaDef.SystemPrompt, council.Topic, historyText.String())
+
+	if directive != "" {
+		prompt += fmt.Sprintf("\n\nFollow-up directive from user: %s\n\nPlease incorporate this feedback or address this follow-up question in your response.", directive)
+	} else {
+		prompt += "\n\nProvide your perspective on this topic. Focus on what matters most from your viewpoint."
+	}
+
+	prompt += "\n\nYour response:\n\nUse Markdown format."
+
+	return prompt, nil
+}
+
+// AddFollowUp adds a user follow-up and resumes the council deliberation.
+func (e *Engine) AddFollowUp(ctx context.Context, councilID string, content string) error {
+	council, err := e.storage.GetCouncil(councilID)
+	if err != nil {
+		return err
+	}
+
+	// Determine new round
+	responses, _ := e.storage.GetResponses(councilID)
+	newRound := 1
+	if len(responses) > 0 {
+		newRound = responses[len(responses)-1].Round + 1
+	}
+
+	userResponse := core.Response{
+		ID:        core.GenerateID(),
+		CouncilID: council.ID,
+		MemberID:  "user",
+		Round:     newRound,
+		Content:   content,
+		CreatedAt: time.Now(),
+	}
+
+	if err := e.storage.AddResponse(&userResponse); err != nil {
+		return fmt.Errorf("failed to save user follow-up: %w", err)
+	}
+
+	// Trigger background run
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		e.RunCouncil(ctx, council)
+	}()
 
 	return nil
 }

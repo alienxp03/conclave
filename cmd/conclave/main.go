@@ -242,32 +242,32 @@ func runNewCouncil(cmd *cobra.Command, topic string) error {
 	rankingCount := 0
 
 	callbacks := &council.CouncilCallbacks{
-		OnResponseCollected: func(agent core.Agent, response string) {
+		OnResponseCollected: func(resp core.Response) {
 			responseCount++
-			fmt.Printf("\n%s [Stage 1 - Response %d/%d] %s\n", strings.Repeat("─", 20), responseCount, len(c.Members), agent.Name)
+			fmt.Printf("\n%s [Stage 1 - Response %d/%d] Member %s\n", strings.Repeat("─", 20), responseCount, len(c.Members), resp.MemberID)
 			fmt.Println(strings.Repeat("─", 60))
 			// Truncate long responses for display
-			if len(response) > 500 {
-				fmt.Println(response[:500] + "...")
+			if len(resp.Content) > 500 {
+				fmt.Println(resp.Content[:500] + "...")
 			} else {
-				fmt.Println(response)
+				fmt.Println(resp.Content)
 			}
 			fmt.Println()
 		},
-		OnRankingCollected: func(agent core.Agent, ranking string) {
+		OnRankingCollected: func(ranking core.Ranking) {
 			rankingCount++
-			fmt.Printf("\n%s [Stage 2 - Ranking %d/%d] %s\n", strings.Repeat("─", 20), rankingCount, len(c.Members), agent.Name)
+			fmt.Printf("\n%s [Stage 2 - Ranking %d/%d] Reviewer %s\n", strings.Repeat("─", 20), rankingCount, len(c.Members), ranking.ReviewerID)
 			fmt.Println(strings.Repeat("─", 60))
 			// Truncate long rankings for display
-			if len(ranking) > 500 {
-				fmt.Println(ranking[:500] + "...")
+			if len(ranking.Reasoning) > 500 {
+				fmt.Println(ranking.Reasoning[:500] + "...")
 			} else {
-				fmt.Println(ranking)
+				fmt.Println(ranking.Reasoning)
 			}
 			fmt.Println()
 		},
-		OnSynthesisComplete: func(synthesis string) {
-			fmt.Printf("\n%s [Stage 3 - Synthesis]\n", strings.Repeat("─", 20))
+		OnSynthesisComplete: func(synthesis core.CouncilSynthesis) {
+			fmt.Printf("\n%s [Stage 3 - Synthesis Round %d]\n", strings.Repeat("─", 20), synthesis.Round)
 		},
 	}
 
@@ -299,7 +299,9 @@ func runNewCouncil(cmd *cobra.Command, topic string) error {
 	fmt.Println(strings.Repeat("═", 60))
 	fmt.Println("🏁 FINAL SYNTHESIS")
 	fmt.Println(strings.Repeat("═", 60))
-	fmt.Println(c.Synthesis)
+	if len(c.Syntheses) > 0 {
+		fmt.Println(c.Syntheses[len(c.Syntheses)-1].Content)
+	}
 
 	return nil
 }
@@ -389,40 +391,43 @@ func runDebate(ctx context.Context, eng *engine.Engine, debate *core.Debate) err
 		return fmt.Errorf("debate failed: %w", err)
 	}
 
-	return showConclusion(eng, debate.ID)
-}
-
-func showConclusion(eng *engine.Engine, debateID string) error {
-	debate, _ := eng.GetDebate(debateID)
-	if debate == nil || debate.Conclusion == nil {
-		return nil
+	// Fetch updated debate to get conclusions
+	updated, _ := eng.GetDebate(debate.ID)
+	if updated != nil && len(updated.Conclusions) > 0 {
+		for _, c := range updated.Conclusions {
+			showConclusion(updated, c)
+		}
 	}
 
-	fmt.Println(strings.Repeat("═", 60))
-	fmt.Println("🏁 CONCLUSION")
+	return nil
+}
+
+func showConclusion(debate *core.Debate, conclusion *core.Conclusion) {
+	fmt.Printf("\n%s\n", strings.Repeat("═", 60))
+	fmt.Printf("🏁 CONCLUSION (Round %d)\n", conclusion.Round)
 	fmt.Println(strings.Repeat("═", 60))
 
 	// Show votes
-	if debate.Conclusion.AgentAVote != nil {
+	if conclusion.AgentAVote != nil {
 		voteIcon := "❌"
-		if debate.Conclusion.AgentAVote.Agrees {
+		if conclusion.AgentAVote.Agrees {
 			voteIcon = "✅"
 		}
 		fmt.Printf("\n%s %s votes: %s\n", voteIcon, debate.AgentA.Name,
-			map[bool]string{true: "AGREE", false: "DISAGREE"}[debate.Conclusion.AgentAVote.Agrees])
+			map[bool]string{true: "AGREE", false: "DISAGREE"}[conclusion.AgentAVote.Agrees])
 	}
-	if debate.Conclusion.AgentBVote != nil {
+	if conclusion.AgentBVote != nil {
 		voteIcon := "❌"
-		if debate.Conclusion.AgentBVote.Agrees {
+		if conclusion.AgentBVote.Agrees {
 			voteIcon = "✅"
 		}
 		fmt.Printf("%s %s votes: %s\n", voteIcon, debate.AgentB.Name,
-			map[bool]string{true: "AGREE", false: "DISAGREE"}[debate.Conclusion.AgentBVote.Agrees])
+			map[bool]string{true: "AGREE", false: "DISAGREE"}[conclusion.AgentBVote.Agrees])
 	}
 
 	fmt.Println()
-	if debate.Conclusion.Agreed {
-		if debate.Conclusion.EarlyConsensus {
+	if conclusion.Agreed {
+		if conclusion.EarlyConsensus {
 			fmt.Println("🤝 Consensus Reached Early!")
 		} else {
 			fmt.Println("🤝 Consensus Reached!")
@@ -431,18 +436,16 @@ func showConclusion(eng *engine.Engine, debateID string) error {
 		fmt.Println("⚔️  No Consensus")
 	}
 
-	fmt.Printf("\n%s\n", debate.Conclusion.Summary)
+	fmt.Printf("\n%s\n", conclusion.Summary)
 
-	if !debate.Conclusion.Agreed {
-		if debate.Conclusion.AgentASummary != "" {
-			fmt.Printf("\n📌 %s:\n%s\n", debate.AgentA.Name, debate.Conclusion.AgentASummary)
+	if !conclusion.Agreed {
+		if conclusion.AgentASummary != "" {
+			fmt.Printf("\n📌 %s:\n%s\n", debate.AgentA.Name, conclusion.AgentASummary)
 		}
-		if debate.Conclusion.AgentBSummary != "" {
-			fmt.Printf("\n📌 %s:\n%s\n", debate.AgentB.Name, debate.Conclusion.AgentBSummary)
+		if conclusion.AgentBSummary != "" {
+			fmt.Printf("\n📌 %s:\n%s\n", debate.AgentB.Name, conclusion.AgentBSummary)
 		}
 	}
-
-	return nil
 }
 
 func getAgentName(debate *core.Debate, agentID string) string {
@@ -548,14 +551,16 @@ var showCmd = &cobra.Command{
 			fmt.Println(strings.Repeat("─", 60))
 			for _, turn := range turns {
 				agentName := getAgentName(debate, turn.AgentID)
-				fmt.Printf("\n📢 Turn %d - %s\n", turn.Number, agentName)
+				fmt.Printf("\n📢 Turn %d (Round %d) - %s\n", turn.Number, turn.Round, agentName)
 				fmt.Println(strings.Repeat("─", 40))
 				fmt.Println(turn.Content)
 			}
 		}
 
-		if debate.Conclusion != nil {
-			showConclusion(eng, debate.ID)
+		if len(debate.Conclusions) > 0 {
+			for _, c := range debate.Conclusions {
+				showConclusion(debate, c)
+			}
 		}
 
 		return nil

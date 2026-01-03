@@ -63,6 +63,15 @@ class ApiClient {
     if (!response.ok) throw new Error('Failed to delete debate');
   }
 
+  async addDebateFollowUp(id: string, content: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/debates/${id}/followup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (!response.ok) throw new Error('Failed to add follow-up');
+  }
+
   // Create an EventSource for streaming debate updates
   createDebateStream(debateId: string): EventSource {
     return new EventSource(`${API_BASE}/debates/${debateId}/stream`);
@@ -96,6 +105,15 @@ class ApiClient {
     }
 
     return response.json();
+  }
+
+  async addCouncilFollowUp(id: string, content: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/councils/${id}/followup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+    if (!response.ok) throw new Error('Failed to add follow-up');
   }
 
   createCouncilStream(councilId: string): EventSource {

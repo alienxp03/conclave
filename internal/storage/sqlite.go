@@ -70,6 +70,7 @@ func (s *SQLiteStorage) Initialize() error {
 		debate_id TEXT NOT NULL,
 		agent_id TEXT NOT NULL,
 		number INTEGER NOT NULL,
+		round INTEGER NOT NULL DEFAULT 1,
 		content TEXT NOT NULL,
 		created_at DATETIME NOT NULL,
 		FOREIGN KEY (debate_id) REFERENCES debates(id) ON DELETE CASCADE
@@ -125,6 +126,7 @@ func (s *SQLiteStorage) Initialize() error {
 		id TEXT PRIMARY KEY,
 		council_id TEXT NOT NULL,
 		member_id TEXT NOT NULL,
+		round INTEGER NOT NULL DEFAULT 1,
 		content TEXT NOT NULL,
 		created_at DATETIME NOT NULL,
 		FOREIGN KEY (council_id) REFERENCES councils(id) ON DELETE CASCADE,
@@ -135,6 +137,7 @@ func (s *SQLiteStorage) Initialize() error {
 		id TEXT PRIMARY KEY,
 		council_id TEXT NOT NULL,
 		reviewer_id TEXT NOT NULL,
+		round INTEGER NOT NULL DEFAULT 1,
 		rankings_json TEXT NOT NULL,
 		reasoning TEXT,
 		created_at DATETIME NOT NULL,
@@ -177,6 +180,11 @@ func (s *SQLiteStorage) migrate() {
 	// Add title column if not exists
 	s.db.Exec("ALTER TABLE debates ADD COLUMN title TEXT NOT NULL DEFAULT 'New conversation'")
 	s.db.Exec("ALTER TABLE councils ADD COLUMN title TEXT NOT NULL DEFAULT 'New conversation'")
+
+	// Add round column if not exists
+	s.db.Exec("ALTER TABLE turns ADD COLUMN round INTEGER NOT NULL DEFAULT 1")
+	s.db.Exec("ALTER TABLE responses ADD COLUMN round INTEGER NOT NULL DEFAULT 1")
+	s.db.Exec("ALTER TABLE rankings ADD COLUMN round INTEGER NOT NULL DEFAULT 1")
 }
 
 // Close closes the database connection.
@@ -196,14 +204,14 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 		return fmt.Errorf("failed to marshal agent B: %w", err)
 	}
 
-	var conclusionJSON *string
-	if debate.Conclusion != nil {
-		data, err := json.Marshal(debate.Conclusion)
+	var conclusionsJSON *string
+	if len(debate.Conclusions) > 0 {
+		data, err := json.Marshal(debate.Conclusions)
 		if err != nil {
-			return fmt.Errorf("failed to marshal conclusion: %w", err)
+			return fmt.Errorf("failed to marshal conclusions: %w", err)
 		}
 		str := string(data)
-		conclusionJSON = &str
+		conclusionsJSON = &str
 	}
 
 	if debate.Title == "" {
@@ -231,7 +239,7 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 		debate.MaxTurns,
 		debate.Status,
 		readOnly,
-		conclusionJSON,
+		conclusionsJSON,
 		debate.CreatedAt,
 		debate.UpdatedAt,
 		debate.CompletedAt,
@@ -254,7 +262,7 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 
 	var debate core.Debate
 	var agentAJSON, agentBJSON string
-	var conclusionJSON sql.NullString
+	var conclusionsJSON sql.NullString
 	var completedAt sql.NullTime
 	var readOnly int
 
@@ -269,7 +277,7 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 		&debate.MaxTurns,
 		&debate.Status,
 		&readOnly,
-		&conclusionJSON,
+		&conclusionsJSON,
 		&debate.CreatedAt,
 		&debate.UpdatedAt,
 		&completedAt,
@@ -290,12 +298,39 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 		return nil, fmt.Errorf("failed to unmarshal agent B: %w", err)
 	}
 
-	if conclusionJSON.Valid {
-		var conclusion core.Conclusion
-		if err := json.Unmarshal([]byte(conclusionJSON.String), &conclusion); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal conclusion: %w", err)
+	if conclusionsJSON.Valid {
+		if err := json.Unmarshal([]byte(conclusionsJSON.String), &debate.Conclusions); err != nil {
+			// Try backward compatibility
+			var single core.Conclusion
+			if err2 := json.Unmarshal([]byte(conclusionsJSON.String), &single); err2 == nil {
+				debate.Conclusions = []*core.Conclusion{&single}
+			} else {
+				return nil, fmt.Errorf("failed to unmarshal conclusions: %w", err)
+			}
 		}
-		debate.Conclusion = &conclusion
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get debate: %w", err)
+	}
+
+	if err := json.Unmarshal([]byte(agentAJSON), &debate.AgentA); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal agent A: %w", err)
+	}
+
+	if err := json.Unmarshal([]byte(agentBJSON), &debate.AgentB); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal agent B: %w", err)
+	}
+
+	if conclusionsJSON.Valid {
+		if err := json.Unmarshal([]byte(conclusionsJSON.String), &debate.Conclusions); err != nil {
+			// Try backward compatibility
+			var single core.Conclusion
+			if err2 := json.Unmarshal([]byte(conclusionsJSON.String), &single); err2 == nil {
+				debate.Conclusions = []*core.Conclusion{&single}
+			} else {
+				return nil, fmt.Errorf("failed to unmarshal conclusions: %w", err)
+			}
+		}
 	}
 
 	if completedAt.Valid {
@@ -328,14 +363,14 @@ func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
 		return fmt.Errorf("failed to marshal agent B: %w", err)
 	}
 
-	var conclusionJSON *string
-	if debate.Conclusion != nil {
-		data, err := json.Marshal(debate.Conclusion)
+	var conclusionsJSON *string
+	if len(debate.Conclusions) > 0 {
+		data, err := json.Marshal(debate.Conclusions)
 		if err != nil {
-			return fmt.Errorf("failed to marshal conclusion: %w", err)
+			return fmt.Errorf("failed to marshal conclusions: %w", err)
 		}
 		str := string(data)
-		conclusionJSON = &str
+		conclusionsJSON = &str
 	}
 
 	debate.UpdatedAt = time.Now()
@@ -361,7 +396,7 @@ func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
 		debate.MaxTurns,
 		debate.Status,
 		readOnly,
-		conclusionJSON,
+		conclusionsJSON,
 		debate.UpdatedAt,
 		debate.CompletedAt,
 		debate.ID,
@@ -472,15 +507,20 @@ func (s *SQLiteStorage) SetReadOnly(id string, readOnly bool) error {
 // AddTurn adds a turn to a debate.
 func (s *SQLiteStorage) AddTurn(turn *core.Turn) error {
 	query := `
-	INSERT INTO turns (id, debate_id, agent_id, number, content, created_at)
-	VALUES (?, ?, ?, ?, ?, ?)
+	INSERT INTO turns (id, debate_id, agent_id, number, round, content, created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
+
+	if turn.Round == 0 {
+		turn.Round = 1
+	}
 
 	_, err := s.db.Exec(query,
 		turn.ID,
 		turn.DebateID,
 		turn.AgentID,
 		turn.Number,
+		turn.Round,
 		turn.Content,
 		turn.CreatedAt,
 	)
@@ -495,7 +535,7 @@ func (s *SQLiteStorage) AddTurn(turn *core.Turn) error {
 // GetTurns returns all turns for a debate.
 func (s *SQLiteStorage) GetTurns(debateID string) ([]*core.Turn, error) {
 	query := `
-	SELECT id, debate_id, agent_id, number, content, created_at
+	SELECT id, debate_id, agent_id, number, round, content, created_at
 	FROM turns
 	WHERE debate_id = ?
 	ORDER BY number ASC
@@ -515,6 +555,7 @@ func (s *SQLiteStorage) GetTurns(debateID string) ([]*core.Turn, error) {
 			&turn.DebateID,
 			&turn.AgentID,
 			&turn.Number,
+			&turn.Round,
 			&turn.Content,
 			&turn.CreatedAt,
 		)
@@ -530,7 +571,7 @@ func (s *SQLiteStorage) GetTurns(debateID string) ([]*core.Turn, error) {
 // GetLatestTurn returns the most recent turn for a debate.
 func (s *SQLiteStorage) GetLatestTurn(debateID string) (*core.Turn, error) {
 	query := `
-	SELECT id, debate_id, agent_id, number, content, created_at
+	SELECT id, debate_id, agent_id, number, round, content, created_at
 	FROM turns
 	WHERE debate_id = ?
 	ORDER BY number DESC
@@ -543,6 +584,7 @@ func (s *SQLiteStorage) GetLatestTurn(debateID string) (*core.Turn, error) {
 		&turn.DebateID,
 		&turn.AgentID,
 		&turn.Number,
+		&turn.Round,
 		&turn.Content,
 		&turn.CreatedAt,
 	)
@@ -847,6 +889,16 @@ func (s *SQLiteStorage) CreateCouncil(council *core.Council) error {
 		return fmt.Errorf("failed to marshal chairman: %w", err)
 	}
 
+	var synthesesJSON *string
+	if len(council.Syntheses) > 0 {
+		data, err := json.Marshal(council.Syntheses)
+		if err != nil {
+			return fmt.Errorf("failed to marshal syntheses: %w", err)
+		}
+		str := string(data)
+		synthesesJSON = &str
+	}
+
 	query := `
 	INSERT INTO councils (id, title, topic, cwd, chairman_json, status, synthesis, created_at, updated_at, completed_at)
 	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -864,7 +916,7 @@ func (s *SQLiteStorage) CreateCouncil(council *core.Council) error {
 		council.CWD,
 		string(chairmanJSON),
 		council.Status,
-		council.Synthesis,
+		synthesesJSON,
 		council.CreatedAt,
 		council.UpdatedAt,
 		completedAt,
@@ -913,7 +965,7 @@ func (s *SQLiteStorage) GetCouncil(id string) (*core.Council, error) {
 
 	var council core.Council
 	var chairmanJSON string
-	var synthesis sql.NullString
+	var synthesesJSON sql.NullString
 	var completedAt sql.NullTime
 
 	err := s.db.QueryRow(query, id).Scan(
@@ -923,7 +975,7 @@ func (s *SQLiteStorage) GetCouncil(id string) (*core.Council, error) {
 		&council.CWD,
 		&chairmanJSON,
 		&council.Status,
-		&synthesis,
+		&synthesesJSON,
 		&council.CreatedAt,
 		&council.UpdatedAt,
 		&completedAt,
@@ -941,8 +993,17 @@ func (s *SQLiteStorage) GetCouncil(id string) (*core.Council, error) {
 		return nil, fmt.Errorf("failed to unmarshal chairman: %w", err)
 	}
 
-	if synthesis.Valid {
-		council.Synthesis = synthesis.String
+	if synthesesJSON.Valid {
+		if err := json.Unmarshal([]byte(synthesesJSON.String), &council.Syntheses); err != nil {
+			// Backward compatibility: try unmarshaling as single string
+			council.Syntheses = []*core.CouncilSynthesis{
+				{
+					Round:     1,
+					Content:   synthesesJSON.String,
+					CreatedAt: council.CreatedAt,
+				},
+			}
+		}
 	}
 
 	if completedAt.Valid {
@@ -1008,6 +1069,16 @@ func (s *SQLiteStorage) UpdateCouncil(council *core.Council) error {
 		return fmt.Errorf("failed to marshal chairman: %w", err)
 	}
 
+	var synthesesJSON *string
+	if len(council.Syntheses) > 0 {
+		data, err := json.Marshal(council.Syntheses)
+		if err != nil {
+			return fmt.Errorf("failed to marshal syntheses: %w", err)
+		}
+		str := string(data)
+		synthesesJSON = &str
+	}
+
 	query := `
 	UPDATE councils
 	SET title = ?, topic = ?, cwd = ?, chairman_json = ?, status = ?, synthesis = ?, updated_at = ?, completed_at = ?
@@ -1025,7 +1096,7 @@ func (s *SQLiteStorage) UpdateCouncil(council *core.Council) error {
 		council.CWD,
 		string(chairmanJSON),
 		council.Status,
-		council.Synthesis,
+		synthesesJSON,
 		council.UpdatedAt,
 		completedAt,
 		council.ID,
@@ -1104,14 +1175,19 @@ func (s *SQLiteStorage) ListCouncils(limit, offset int) ([]*core.CouncilSummary,
 // AddResponse adds a response to a council.
 func (s *SQLiteStorage) AddResponse(response *core.Response) error {
 	query := `
-	INSERT INTO responses (id, council_id, member_id, content, created_at)
-	VALUES (?, ?, ?, ?, ?)
+	INSERT INTO responses (id, council_id, member_id, round, content, created_at)
+	VALUES (?, ?, ?, ?, ?, ?)
 	`
+
+	if response.Round == 0 {
+		response.Round = 1
+	}
 
 	_, err := s.db.Exec(query,
 		response.ID,
 		response.CouncilID,
 		response.MemberID,
+		response.Round,
 		response.Content,
 		response.CreatedAt,
 	)
@@ -1126,7 +1202,7 @@ func (s *SQLiteStorage) AddResponse(response *core.Response) error {
 // GetResponses returns all responses for a council.
 func (s *SQLiteStorage) GetResponses(councilID string) ([]*core.Response, error) {
 	query := `
-	SELECT id, council_id, member_id, content, created_at
+	SELECT id, council_id, member_id, round, content, created_at
 	FROM responses
 	WHERE council_id = ?
 	ORDER BY created_at ASC
@@ -1145,6 +1221,7 @@ func (s *SQLiteStorage) GetResponses(councilID string) ([]*core.Response, error)
 			&response.ID,
 			&response.CouncilID,
 			&response.MemberID,
+			&response.Round,
 			&response.Content,
 			&response.CreatedAt,
 		)
@@ -1165,14 +1242,19 @@ func (s *SQLiteStorage) AddRanking(ranking *core.Ranking) error {
 	}
 
 	query := `
-	INSERT INTO rankings (id, council_id, reviewer_id, rankings_json, reasoning, created_at)
-	VALUES (?, ?, ?, ?, ?, ?)
+	INSERT INTO rankings (id, council_id, reviewer_id, round, rankings_json, reasoning, created_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?)
 	`
+
+	if ranking.Round == 0 {
+		ranking.Round = 1
+	}
 
 	_, err = s.db.Exec(query,
 		ranking.ID,
 		ranking.CouncilID,
 		ranking.ReviewerID,
+		ranking.Round,
 		string(rankingsJSON),
 		ranking.Reasoning,
 		ranking.CreatedAt,
@@ -1188,7 +1270,7 @@ func (s *SQLiteStorage) AddRanking(ranking *core.Ranking) error {
 // GetRankings returns all rankings for a council.
 func (s *SQLiteStorage) GetRankings(councilID string) ([]*core.Ranking, error) {
 	query := `
-	SELECT id, council_id, reviewer_id, rankings_json, reasoning, created_at
+	SELECT id, council_id, reviewer_id, round, rankings_json, reasoning, created_at
 	FROM rankings
 	WHERE council_id = ?
 	ORDER BY created_at ASC
@@ -1208,6 +1290,7 @@ func (s *SQLiteStorage) GetRankings(councilID string) ([]*core.Ranking, error) {
 			&ranking.ID,
 			&ranking.CouncilID,
 			&ranking.ReviewerID,
+			&ranking.Round,
 			&rankingsJSON,
 			&ranking.Reasoning,
 			&ranking.CreatedAt,

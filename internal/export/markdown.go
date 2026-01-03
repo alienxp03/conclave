@@ -49,42 +49,67 @@ func (e *MarkdownExporter) Export(debate *core.Debate, turns []*core.Turn, w io.
 	if len(turns) == 0 {
 		sb.WriteString("*No turns recorded.*\n\n")
 	} else {
-		for _, turn := range turns {
-			agentName := debate.AgentA.Name
-			if turn.AgentID == debate.AgentB.ID {
-				agentName = debate.AgentB.Name
+		// Group turns by round
+		rounds := make(map[int][]*core.Turn)
+		maxRound := 0
+		for _, t := range turns {
+			rounds[t.Round] = append(rounds[t.Round], t)
+			if t.Round > maxRound {
+				maxRound = t.Round
 			}
-
-			sb.WriteString(fmt.Sprintf("### Turn %d - %s\n\n", turn.Number, agentName))
-			sb.WriteString(fmt.Sprintf("*%s*\n\n", turn.CreatedAt.Format("3:04 PM")))
-			sb.WriteString(turn.Content)
-			sb.WriteString("\n\n---\n\n")
-		}
-	}
-
-	// Conclusion
-	if debate.Conclusion != nil {
-		sb.WriteString("## Conclusion\n\n")
-
-		if debate.Conclusion.Agreed {
-			sb.WriteString("**✅ Consensus Reached**\n\n")
-		} else {
-			sb.WriteString("**❌ No Consensus**\n\n")
 		}
 
-		sb.WriteString(debate.Conclusion.Summary)
-		sb.WriteString("\n\n")
+		// Group conclusions by round
+		conclusions := make(map[int]*core.Conclusion)
+		for _, c := range debate.Conclusions {
+			conclusions[c.Round] = c
+		}
 
-		if !debate.Conclusion.Agreed {
-			if debate.Conclusion.AgentASummary != "" {
-				sb.WriteString(fmt.Sprintf("### %s's Final Position\n\n", debate.AgentA.Name))
-				sb.WriteString(debate.Conclusion.AgentASummary)
-				sb.WriteString("\n\n")
+		for r := 1; r <= maxRound; r++ {
+			if r > 1 || len(rounds) > 1 {
+				sb.WriteString(fmt.Sprintf("### Round %d\n\n", r))
 			}
-			if debate.Conclusion.AgentBSummary != "" {
-				sb.WriteString(fmt.Sprintf("### %s's Final Position\n\n", debate.AgentB.Name))
-				sb.WriteString(debate.Conclusion.AgentBSummary)
+
+			for _, turn := range rounds[r] {
+				agentName := debate.AgentA.Name
+				if turn.AgentID == debate.AgentB.ID {
+					agentName = debate.AgentB.Name
+				} else if turn.AgentID == "user" {
+					agentName = "User (Follow-up)"
+				}
+
+				sb.WriteString(fmt.Sprintf("#### Turn %d - %s\n\n", turn.Number, agentName))
+				sb.WriteString(fmt.Sprintf("*%s*\n\n", turn.CreatedAt.Format("3:04 PM")))
+				sb.WriteString(turn.Content)
+				sb.WriteString("\n\n---\n\n")
+			}
+
+			// Add conclusion for this round if exists
+			if c, ok := conclusions[r]; ok {
+				sb.WriteString(fmt.Sprintf("### Round %d Conclusion\n\n", r))
+
+				if c.Agreed {
+					sb.WriteString("**✅ Consensus Reached**\n\n")
+				} else {
+					sb.WriteString("**❌ No Consensus**\n\n")
+				}
+
+				sb.WriteString(c.Summary)
 				sb.WriteString("\n\n")
+
+				if !c.Agreed {
+					if c.AgentASummary != "" {
+						sb.WriteString(fmt.Sprintf("#### %s's Position\n\n", debate.AgentA.Name))
+						sb.WriteString(c.AgentASummary)
+						sb.WriteString("\n\n")
+					}
+					if c.AgentBSummary != "" {
+						sb.WriteString(fmt.Sprintf("#### %s's Position\n\n", debate.AgentB.Name))
+						sb.WriteString(c.AgentBSummary)
+						sb.WriteString("\n\n")
+					}
+				}
+				sb.WriteString("\n---\n\n")
 			}
 		}
 	}

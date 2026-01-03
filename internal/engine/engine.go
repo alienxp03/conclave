@@ -272,15 +272,32 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 		return fmt.Errorf("failed to update debate status: %w", err)
 	}
 
-	// Randomly decide who starts
-	agents := []core.Agent{debate.AgentA, debate.AgentB}
-	rand.Shuffle(len(agents), func(i, j int) { agents[i], agents[j] = agents[j], agents[i] })
+	// Get current turns to determine progress
+	turns, _ := e.storage.GetTurns(debateID)
+	currentRound := 1
+	if len(turns) > 0 {
+		currentRound = turns[len(turns)-1].Round
+	}
 
-	// Execute turns
-	totalTurns := debate.MaxTurns * 2
+	// Count agent turns in current round
+	turnsInRound := 0
+	for _, t := range turns {
+		if t.Round == currentRound && t.AgentID != "user" {
+			turnsInRound++
+		}
+	}
+
+	// Decide who starts the round (consistent for the round)
+	agents := []core.Agent{debate.AgentA, debate.AgentB}
+	// Use debate ID + round as seed
+	r := rand.New(rand.NewSource(int64(hashString(debate.ID) + uint32(currentRound))))
+	r.Shuffle(len(agents), func(i, j int) { agents[i], agents[j] = agents[j], agents[i] })
+
+	// Execute remaining turns in round
+	totalTurnsInRound := debate.MaxTurns * 2
 	earlyConsensus := false
 
-	for turnNum := 1; turnNum <= totalTurns; turnNum++ {
+	for i := turnsInRound + 1; i <= totalTurnsInRound; i++ {
 		select {
 		case <-ctx.Done():
 			debate.Status = core.StatusFailed
@@ -290,8 +307,9 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 		}
 
 		// Alternate between agents
-		currentAgent := agents[(turnNum-1)%2]
-		isLastTurn := turnNum == totalTurns
+		currentAgent := agents[(i-1)%2]
+		isLastTurn := i == totalTurnsInRound
+		turnNum := len(turns) + 1
 
 		turn, err := e.executeTurn(ctx, debate, currentAgent, turnNum, isLastTurn)
 		if err != nil {
@@ -300,13 +318,16 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 			return fmt.Errorf("failed to execute turn %d: %w", turnNum, err)
 		}
 
+		// Update turns list for next iteration
+		turns = append(turns, turn)
+
 		if callback != nil {
 			callback(turn, debate)
 		}
 
 		// Check for early consensus after each complete round (both agents spoke)
-		// Start checking after turn 4 (minimum 2 rounds of discussion)
-		if turnNum >= 4 && turnNum%2 == 0 && turnNum < totalTurns {
+		// Start checking after 2 turns in current round (1 round of discussion)
+		if i >= 2 && i%2 == 0 && i < totalTurnsInRound {
 			if e.checkEarlyConsensus(ctx, debate) {
 				earlyConsensus = true
 				break
@@ -318,17 +339,25 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 	conclusion, err := e.generateConclusion(ctx, debate)
 	if err != nil {
 		// Don't fail the whole debate, just log
-		debate.Conclusion = &core.Conclusion{
+		conclusion = &core.Conclusion{
 			Agreed:  false,
 			Summary: "Unable to generate conclusion: " + err.Error(),
 		}
-	} else {
-		debate.Conclusion = conclusion
 	}
 
 	if earlyConsensus {
-		debate.Conclusion.EarlyConsensus = true
+		conclusion.EarlyConsensus = true
 	}
+
+	// Set round for conclusion
+	turns, _ = e.storage.GetTurns(debate.ID)
+	if len(turns) > 0 {
+		conclusion.Round = turns[len(turns)-1].Round
+	} else {
+		conclusion.Round = 1
+	}
+
+	debate.Conclusions = append(debate.Conclusions, conclusion)
 
 	// Mark as completed
 	now := time.Now()
@@ -457,11 +486,17 @@ func (e *Engine) executeTurn(ctx context.Context, debate *core.Debate, agent cor
 	}
 
 	// Create turn
+	round := 1
+	if len(turns) > 0 {
+		round = turns[len(turns)-1].Round
+	}
+
 	turn := &core.Turn{
 		ID:        core.GenerateID(),
 		DebateID:  debate.ID,
 		AgentID:   agent.ID,
 		Number:    turnNum,
+		Round:     round,
 		Content:   response,
 		CreatedAt: time.Now(),
 	}
@@ -519,10 +554,14 @@ func (e *Engine) buildPrompt(debate *core.Debate, agent core.Agent, turns []*cor
 		var agentName string
 		if t.AgentID == debate.AgentA.ID {
 			agentName = debate.AgentA.Name
-		} else {
+		} else if t.AgentID == debate.AgentB.ID {
 			agentName = debate.AgentB.Name
+		} else if t.AgentID == "user" {
+			agentName = "User (Follow-up)"
+		} else {
+			agentName = "Unknown"
 		}
-		historyBuilder.WriteString(fmt.Sprintf("\n--- %s (Turn %d) ---\n%s\n", agentName, t.Number, t.Content))
+		historyBuilder.WriteString(fmt.Sprintf("\n--- %s (Round %d, Turn %d) ---\n%s\n", agentName, t.Round, t.Number, t.Content))
 	}
 
 	// Template data
@@ -767,7 +806,10 @@ func (e *Engine) ExecuteNextTurn(ctx context.Context, debateID string) (*core.Tu
 	// Check if debate is complete
 	if currentTurnNum == totalTurns {
 		conclusion, _ := e.generateConclusion(ctx, debate)
-		debate.Conclusion = conclusion
+		if conclusion != nil {
+			conclusion.Round = turn.Round
+			debate.Conclusions = append(debate.Conclusions, conclusion)
+		}
 		now := time.Now()
 		debate.Status = core.StatusCompleted
 		debate.CompletedAt = &now
@@ -779,7 +821,7 @@ func (e *Engine) ExecuteNextTurn(ctx context.Context, debateID string) (*core.Tu
 
 // checkConclusion checks if the debate should conclude early.
 func (e *Engine) checkConclusion(ctx context.Context, debate *core.Debate, turns []*core.Turn) error {
-	// Only check if we have enough turns
+	// Only check if we have enough turns in the current round
 	if len(turns) < 4 {
 		return nil
 	}
@@ -791,13 +833,55 @@ func (e *Engine) checkConclusion(ctx context.Context, debate *core.Debate, turns
 			return err
 		}
 		conclusion.EarlyConsensus = true
-		debate.Conclusion = conclusion
+		if len(turns) > 0 {
+			conclusion.Round = turns[len(turns)-1].Round
+		}
+		debate.Conclusions = append(debate.Conclusions, conclusion)
 
 		now := time.Now()
 		debate.Status = core.StatusCompleted
 		debate.CompletedAt = &now
 		return e.storage.UpdateDebate(debate)
 	}
+
+	return nil
+}
+
+// AddFollowUp adds a user follow-up question and resumes the debate.
+func (e *Engine) AddFollowUp(ctx context.Context, debateID string, content string) error {
+	debate, turns, err := e.GetDebateWithTurns(debateID)
+	if err != nil {
+		return err
+	}
+	if debate == nil {
+		return fmt.Errorf("debate not found")
+	}
+
+	newRound := 1
+	if len(turns) > 0 {
+		newRound = turns[len(turns)-1].Round + 1
+	}
+
+	userTurn := &core.Turn{
+		ID:        core.GenerateID(),
+		DebateID:  debate.ID,
+		AgentID:   "user",
+		Number:    len(turns) + 1,
+		Round:     newRound,
+		Content:   content,
+		CreatedAt: time.Now(),
+	}
+
+	if err := e.storage.AddTurn(userTurn); err != nil {
+		return fmt.Errorf("failed to save user turn: %w", err)
+	}
+
+	// Trigger background run
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+		defer cancel()
+		e.RunDebate(ctx, debateID, nil)
+	}()
 
 	return nil
 }

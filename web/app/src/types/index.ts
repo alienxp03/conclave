@@ -13,6 +13,7 @@ export interface Turn {
   debate_id: string;
   agent_id: string;
   number: number;
+  round: number;
   content: string;
   created_at: string;
 }
@@ -23,6 +24,7 @@ export interface Vote {
 }
 
 export interface Conclusion {
+  round: number;
   agreed: boolean;
   early_consensus: boolean;
   summary: string;
@@ -44,10 +46,10 @@ export interface Debate {
   total_turns: number;
   turn_count: number;
   read_only: boolean;
+  conclusions?: Conclusion[];
   created_at: string;
   updated_at: string;
   completed_at?: string;
-  conclusion?: Conclusion;
 }
 
 export interface DebateSummary {
@@ -127,6 +129,12 @@ export interface CreateCouncilRequest {
   auto_run?: boolean;
 }
 
+export interface CouncilSynthesis {
+  round: number;
+  content: string;
+  created_at: string;
+}
+
 export interface Council {
   id: string;
   title: string;
@@ -135,7 +143,7 @@ export interface Council {
   members: Agent[];
   chairman: Agent;
   status: DebateStatus;
-  synthesis?: string;
+  syntheses?: CouncilSynthesis[];
   created_at: string;
   updated_at: string;
   completed_at?: string;
@@ -149,6 +157,7 @@ export interface CouncilResponse {
   id: string;
   council_id: string;
   member_id: string;
+  round: number;
   content: string;
   created_at: string;
 }
@@ -157,6 +166,7 @@ export interface CouncilRanking {
   id: string;
   council_id: string;
   reviewer_id: string;
+  round: number;
   rankings: string[];
   reasoning: string;
   created_at: string;

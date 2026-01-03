@@ -64,82 +64,111 @@ func (e *PDFExporter) Export(debate *core.Debate, turns []*core.Turn, w io.Write
 		pdf.Cell(0, 6, "No turns recorded.")
 		pdf.Ln(6)
 	} else {
-		for _, turn := range turns {
-			agentName := debate.AgentA.Name
-			isAgentA := turn.AgentID == debate.AgentA.ID
-			if !isAgentA {
-				agentName = debate.AgentB.Name
+		// Group turns and conclusions by round
+		rounds := make(map[int][]*core.Turn)
+		maxRound := 0
+		for _, t := range turns {
+			rounds[t.Round] = append(rounds[t.Round], t)
+			if t.Round > maxRound {
+				maxRound = t.Round
 			}
-
-			// Check if we need a new page
-			if pdf.GetY() > 250 {
-				pdf.AddPage()
-			}
-
-			// Turn header with colored background
-			if isAgentA {
-				pdf.SetFillColor(200, 230, 255) // Light blue
-			} else {
-				pdf.SetFillColor(200, 255, 200) // Light green
-			}
-
-			pdf.SetFont("Arial", "B", 10)
-			header := fmt.Sprintf("Turn %d - %s (%s)", turn.Number, agentName, turn.CreatedAt.Format("3:04 PM"))
-			pdf.CellFormat(0, 7, header, "", 1, "", true, 0, "")
-
-			// Turn content
-			pdf.SetFont("Arial", "", 9)
-			pdf.SetFillColor(255, 255, 255)
-
-			// Word wrap the content
-			content := e.sanitizeText(turn.Content)
-			pdf.MultiCell(0, 5, content, "", "", false)
-			pdf.Ln(5)
-		}
-	}
-
-	// Conclusion
-	if debate.Conclusion != nil {
-		if pdf.GetY() > 230 {
-			pdf.AddPage()
 		}
 
-		pdf.SetFont("Arial", "B", 12)
-		pdf.Cell(0, 8, "Conclusion")
-		pdf.Ln(8)
-
-		// Consensus status
-		if debate.Conclusion.Agreed {
-			pdf.SetFillColor(200, 255, 200) // Light green
-			pdf.SetFont("Arial", "B", 10)
-			pdf.CellFormat(0, 7, "Consensus Reached", "", 1, "", true, 0, "")
-		} else {
-			pdf.SetFillColor(255, 200, 200) // Light red
-			pdf.SetFont("Arial", "B", 10)
-			pdf.CellFormat(0, 7, "No Consensus", "", 1, "", true, 0, "")
+		conclusions := make(map[int]*core.Conclusion)
+		for _, c := range debate.Conclusions {
+			conclusions[c.Round] = c
 		}
 
-		pdf.SetFont("Arial", "", 10)
-		pdf.SetFillColor(255, 255, 255)
-		pdf.MultiCell(0, 5, e.sanitizeText(debate.Conclusion.Summary), "", "", false)
-		pdf.Ln(3)
+		for r := 1; r <= maxRound; r++ {
+			if r > 1 || len(rounds) > 1 {
+				pdf.SetFont("Arial", "B", 11)
+				pdf.SetFillColor(240, 240, 240)
+				pdf.CellFormat(0, 8, fmt.Sprintf("Round %d", r), "B", 1, "L", true, 0, "")
+				pdf.Ln(2)
+			}
 
-		if !debate.Conclusion.Agreed {
-			if debate.Conclusion.AgentASummary != "" {
+			for _, turn := range rounds[r] {
+				agentName := debate.AgentA.Name
+				isAgentA := turn.AgentID == debate.AgentA.ID
+				isUser := turn.AgentID == "user"
+
+				if !isAgentA {
+					agentName = debate.AgentB.Name
+				}
+				if isUser {
+					agentName = "User (Follow-up)"
+				}
+
+				// Check if we need a new page
+				if pdf.GetY() > 250 {
+					pdf.AddPage()
+				}
+
+				// Turn header
+				if isUser {
+					pdf.SetFillColor(255, 240, 200) // Light yellow
+				} else if isAgentA {
+					pdf.SetFillColor(200, 230, 255) // Light blue
+				} else {
+					pdf.SetFillColor(200, 255, 200) // Light green
+				}
+
 				pdf.SetFont("Arial", "B", 10)
-				pdf.Cell(0, 6, fmt.Sprintf("%s's Position:", debate.AgentA.Name))
-				pdf.Ln(6)
+				header := fmt.Sprintf("Turn %d - %s (%s)", turn.Number, agentName, turn.CreatedAt.Format("3:04 PM"))
+				pdf.CellFormat(0, 7, header, "", 1, "", true, 0, "")
+
+				// Turn content
 				pdf.SetFont("Arial", "", 9)
-				pdf.MultiCell(0, 5, e.sanitizeText(debate.Conclusion.AgentASummary), "", "", false)
-				pdf.Ln(3)
+				pdf.SetFillColor(255, 255, 255)
+				content := e.sanitizeText(turn.Content)
+				pdf.MultiCell(0, 5, content, "", "", false)
+				pdf.Ln(5)
 			}
-			if debate.Conclusion.AgentBSummary != "" {
-				pdf.SetFont("Arial", "B", 10)
-				pdf.Cell(0, 6, fmt.Sprintf("%s's Position:", debate.AgentB.Name))
-				pdf.Ln(6)
-				pdf.SetFont("Arial", "", 9)
-				pdf.MultiCell(0, 5, e.sanitizeText(debate.Conclusion.AgentBSummary), "", "", false)
+
+			// Add conclusion for this round
+			if c, ok := conclusions[r]; ok {
+				if pdf.GetY() > 230 {
+					pdf.AddPage()
+				}
+
+				pdf.SetFont("Arial", "B", 11)
+				pdf.Cell(0, 8, fmt.Sprintf("Round %d Conclusion", r))
+				pdf.Ln(8)
+
+				if c.Agreed {
+					pdf.SetFillColor(200, 255, 200) // Light green
+					pdf.SetFont("Arial", "B", 10)
+					pdf.CellFormat(0, 7, "Consensus Reached", "", 1, "", true, 0, "")
+				} else {
+					pdf.SetFillColor(255, 200, 200) // Light red
+					pdf.SetFont("Arial", "B", 10)
+					pdf.CellFormat(0, 7, "No Consensus", "", 1, "", true, 0, "")
+				}
+
+				pdf.SetFont("Arial", "", 10)
+				pdf.SetFillColor(255, 255, 255)
+				pdf.MultiCell(0, 5, e.sanitizeText(c.Summary), "", "", false)
 				pdf.Ln(3)
+
+				if !c.Agreed {
+					if c.AgentASummary != "" {
+						pdf.SetFont("Arial", "B", 10)
+						pdf.Cell(0, 6, fmt.Sprintf("%s's Position:", debate.AgentA.Name))
+						pdf.Ln(6)
+						pdf.SetFont("Arial", "", 9)
+						pdf.MultiCell(0, 5, e.sanitizeText(c.AgentASummary), "", "", false)
+						pdf.Ln(3)
+					}
+					if c.AgentBSummary != "" {
+						pdf.SetFont("Arial", "B", 10)
+						pdf.Cell(0, 6, fmt.Sprintf("%s's Position:", debate.AgentB.Name))
+						pdf.Ln(6)
+						pdf.SetFont("Arial", "", 9)
+						pdf.MultiCell(0, 5, e.sanitizeText(c.AgentBSummary), "", "", false)
+						pdf.Ln(3)
+					}
+				}
+				pdf.Ln(5)
 			}
 		}
 	}
@@ -190,15 +219,15 @@ func (e *PDFExporter) sanitizeText(text string) string {
 	// gofpdf uses Windows-1252 encoding by default
 	// Replace common Unicode characters that might cause issues
 	replacer := strings.NewReplacer(
-		"\u2018", "'",  // Left single quote
-		"\u2019", "'",  // Right single quote
+		"\u2018", "'", // Left single quote
+		"\u2019", "'", // Right single quote
 		"\u201C", "\"", // Left double quote
 		"\u201D", "\"", // Right double quote
-		"\u2013", "-",  // En dash
+		"\u2013", "-", // En dash
 		"\u2014", "--", // Em dash
 		"\u2026", "...", // Ellipsis
-		"\u2022", "*",  // Bullet
-		"\u00A0", " ",  // Non-breaking space
+		"\u2022", "*", // Bullet
+		"\u00A0", " ", // Non-breaking space
 	)
 	return replacer.Replace(text)
 }
