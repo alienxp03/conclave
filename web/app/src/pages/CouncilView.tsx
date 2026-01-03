@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { api } from '../lib/api';
+import { Message } from '../components/Message';
+import { RoundContainer } from '../components/RoundContainer';
 import type { CouncilResponse, CouncilRanking, CouncilSynthesis } from '../types';
 
 export function CouncilView() {
@@ -11,9 +11,6 @@ export function CouncilView() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Active tabs state (mapped by round)
-  const [activeResponseTabs, setActiveResponseTabs] = useState<Record<number, string>>({});
-  const [activeRankingTabs, setActiveRankingTabs] = useState<Record<number, string>>({});
   const [followUp, setFollowUp] = useState('');
 
   // Streaming state
@@ -37,8 +34,6 @@ export function CouncilView() {
     },
   });
 
-  const [completedStagesByRound, setCompletedStagesByRound] = useState<Record<number, number[]>>({});
-
   const followUpMutation = useMutation({
     mutationFn: (content: string) => api.addCouncilFollowUp(id!, content),
     onSuccess: () => {
@@ -46,65 +41,6 @@ export function CouncilView() {
       queryClient.invalidateQueries({ queryKey: ['council', id] });
     },
   });
-
-  // Sync completed stages
-  useEffect(() => {
-    if (!data) return;
-
-    const memberCount = data.council.members.length;
-    const stagesByRound: Record<number, number[]> = {};
-
-    // Get all rounds
-    const rounds = Array.from(new Set([
-      ...(data.responses?.map(r => r.round) || []),
-      ...(Object.values(streamData.responses).map(r => r.round)),
-      ...(data.council.syntheses?.map(s => s.round) || []),
-      ...(Object.values(streamData.syntheses).map(s => s.round))
-    ])).sort((a, b) => a - b);
-
-    rounds.forEach(round => {
-      const stages: number[] = [];
-      const roundResponses = [
-        ...(data.responses?.filter(r => r.round === round) || []),
-        ...Object.values(streamData.responses).filter(r => r.round === round)
-      ];
-      
-      // Stage 1 complete if all agents responded OR if stage 2 has started
-      const agentResponses = roundResponses.filter(r => r.member_id !== 'user');
-      if (agentResponses.length === memberCount) {
-        stages.push(1);
-      }
-
-      const roundRankings = [
-        ...(data.rankings?.filter(r => r.round === round) || []),
-        ...Object.values(streamData.rankings).filter(r => r.round === round)
-      ];
-      if (roundRankings.length === memberCount) {
-        if (!stages.includes(1)) stages.push(1);
-        stages.push(2);
-      }
-
-      const hasSynthesis = data.council.syntheses?.some(s => s.round === round) || !!streamData.syntheses[round];
-      if (hasSynthesis) {
-        if (!stages.includes(1)) stages.push(1);
-        if (!stages.includes(2)) stages.push(2);
-        stages.push(3);
-      }
-      stagesByRound[round] = stages;
-
-      // Set initial active tabs for this round if not set
-      if (data.council.members.length > 0) {
-        if (!activeResponseTabs[round]) {
-          setActiveResponseTabs(prev => ({ ...prev, [round]: data.council.members[0].id }));
-        }
-        if (!activeRankingTabs[round]) {
-          setActiveRankingTabs(prev => ({ ...prev, [round]: data.council.members[0].id }));
-        }
-      }
-    });
-
-    setCompletedStagesByRound(stagesByRound);
-  }, [data, streamData]);
 
   // Streaming effect
   useEffect(() => {
@@ -306,155 +242,104 @@ export function CouncilView() {
           ...Object.values(streamData.rankings).filter(r => r.round === round)
         ];
         const roundSynthesis = council.syntheses?.find(s => s.round === round) || streamData.syntheses[round];
-        const userDirective = roundResponses.find(r => r.member_id === 'user');
-        const stages = completedStagesByRound[round] || [];
 
-        const isStage1Active = council.status === 'in_progress' && !stages.includes(1);
-        const isStage2Active = council.status === 'in_progress' && stages.includes(1) && !stages.includes(2);
-        const isStage3Active = council.status === 'in_progress' && stages.includes(2) && !stages.includes(3);
+        // Helper function to get member color
+        const getMemberColor = (memberIndex: number) => {
+          const colors: Array<'primary' | 'secondary' | 'blue' | 'purple' | 'orange'> = ['primary', 'secondary', 'blue', 'purple', 'orange'];
+          return colors[memberIndex % colors.length];
+        };
+
+        // Helper to get member emoji
+        const getMemberEmoji = (memberIndex: number) => {
+          const emojis = ['💭', '🧠', '🎯', '💡', '🔬'];
+          return emojis[memberIndex % emojis.length];
+        };
 
         return (
-          <div key={round} className="space-y-8 animate-fadeIn">
-            <div className="flex items-center gap-4">
-              <div className="h-px flex-1 bg-brand-border" />
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-bold text-[#859289] uppercase tracking-widest bg-brand-bg px-4 py-1 rounded-full border border-brand-border">
-                  Deliberation Round {round}
-                </span>
-                {roundSynthesis && (
-                  <span className="text-xs px-2 py-1 rounded-full font-medium bg-green-500/20 text-green-500">
-                    ✓ Synthesized
-                  </span>
-                )}
-                <span className="text-xs text-[#859289] bg-brand-bg px-2 py-0.5 rounded-full">
-                  {roundResponses.filter(r => r.member_id !== 'user').length}/{council.members.length} responses
-                </span>
-              </div>
-              <div className="h-px flex-1 bg-brand-border" />
-            </div>
+          <RoundContainer
+            key={round}
+            roundNumber={round}
+            stage={roundSynthesis ? '✓ Synthesized' : `${roundResponses.filter(r => r.member_id !== 'user').length}/${council.members.length} responses`}
+          >
+            {/* Stage 1: Member Perspectives */}
+            {roundResponses.filter(r => r.member_id === 'user').map(userMsg => (
+              <Message.Root
+                key={userMsg.id}
+                role="user"
+                name="You"
+                timestamp={userMsg.created_at}
+              >
+                {userMsg.content}
+              </Message.Root>
+            ))}
 
-            {userDirective && (
-              <div className="bg-brand-primary/10 border-l-4 border-brand-primary p-6 rounded-r-xl shadow-inner">
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-xs font-bold text-brand-primary uppercase tracking-wider">User Follow-up</span>
-                </div>
-                <p className="text-[#d3c6aa] text-lg italic italic">"{userDirective.content}"</p>
-              </div>
+            {roundResponses.filter(r => r.member_id !== 'user').length > 0 && (
+              <Message.Root role="system">
+                <span className="text-xs font-bold uppercase tracking-wider">Stage 1: Member Perspectives</span>
+              </Message.Root>
             )}
 
-            {/* Round Stages */}
-            <div className="grid grid-cols-1 gap-12">
-              {/* Stage 1: Responses */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-brand-primary/20 text-brand-primary flex items-center justify-center font-bold border border-brand-primary/30">1</div>
-                  <h2 className="text-xl font-bold text-white">Member Perspectives</h2>
-                  {stages.includes(1) && <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-                </div>
+            {council.members.map((member, idx) => {
+              const response = roundResponses.find(r => r.member_id === member.id);
+              if (!response) return null;
 
-                <div className="bg-brand-card/30 rounded-xl border border-brand-border overflow-hidden shadow-lg">
-                  <div className="flex flex-wrap border-b border-brand-border bg-brand-bg/20">
-                    {council.members.map((member) => {
-                      const isActive = activeResponseTabs[round] === member.id;
-                      const response = roundResponses.find(r => r.member_id === member.id);
-                      return (
-                        <button
-                          key={member.id}
-                          onClick={() => setActiveResponseTabs(prev => ({ ...prev, [round]: member.id }))}
-                          className={`px-6 py-3 text-sm font-bold transition-all border-b-2 ${isActive ? 'text-brand-primary border-brand-primary bg-brand-primary/5' : 'text-gray-500 border-transparent hover:text-gray-300'}`}
-                        >
-                          {member.name.match(/\(([^)]+)\)/)?.[1] || member.name}
-                          {response && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-green-500"></span>}
-                          {!response && isStage1Active && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse"></span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="p-8 min-h-[200px]">
-                    {activeResponseTabs[round] && (
-                      <div className="prose prose-invert max-w-none">
-                        {roundResponses.find(r => r.member_id === activeResponseTabs[round]) ? (
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{roundResponses.find(r => r.member_id === activeResponseTabs[round])!.content}</ReactMarkdown>
-                        ) : (
-                          <div className="text-gray-500 italic py-10 text-center">
-                            {isStage1Active ? 'Thinking...' : 'Waiting for response...'}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              return (
+                <Message.Root
+                  key={response.id}
+                  role="agent"
+                  name={member.name}
+                  avatar={getMemberEmoji(idx)}
+                  agentColor={getMemberColor(idx)}
+                  timestamp={response.created_at}
+                >
+                  {response.content}
+                </Message.Root>
+              );
+            })}
 
-              {/* Stage 2: Rankings */}
-              <div className={`space-y-6 transition-opacity duration-500 ${stages.length >= 1 ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-brand-accent/20 text-brand-accent flex items-center justify-center font-bold border border-brand-accent/30">2</div>
-                  <h2 className="text-xl font-bold text-white">Peer Evaluations</h2>
-                  {stages.includes(2) && <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-                </div>
+            {/* Stage 2: Peer Evaluations */}
+            {roundRankings.length > 0 && (
+              <Message.Root role="system">
+                <span className="text-xs font-bold uppercase tracking-wider">Stage 2: Peer Evaluations</span>
+              </Message.Root>
+            )}
 
-                <div className="bg-brand-card/30 rounded-xl border border-brand-border overflow-hidden shadow-lg">
-                  <div className="flex flex-wrap border-b border-brand-border bg-brand-bg/20">
-                    {council.members.map((member) => {
-                      const isActive = activeRankingTabs[round] === member.id;
-                      const ranking = roundRankings.find(r => r.reviewer_id === member.id);
-                      return (
-                        <button
-                          key={member.id}
-                          onClick={() => setActiveRankingTabs(prev => ({ ...prev, [round]: member.id }))}
-                          className={`px-6 py-3 text-sm font-bold transition-all border-b-2 ${isActive ? 'text-brand-accent border-brand-accent bg-brand-accent/5' : 'text-gray-500 border-transparent hover:text-gray-300'}`}
-                        >
-                          {member.name.match(/\(([^)]+)\)/)?.[1] || member.name}
-                          {ranking && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-green-500"></span>}
-                          {!ranking && isStage2Active && <span className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-brand-accent animate-pulse"></span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="p-8 min-h-[200px]">
-                    {activeRankingTabs[round] && (
-                      <div className="prose prose-invert max-w-none">
-                        {roundRankings.find(r => r.reviewer_id === activeRankingTabs[round]) ? (
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{roundRankings.find(r => r.reviewer_id === activeRankingTabs[round])!.reasoning}</ReactMarkdown>
-                        ) : (
-                          <div className="text-gray-500 italic py-10 text-center">
-                            {isStage2Active ? 'Evaluating...' : 'Waiting for evaluations...'}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+            {council.members.map((member, idx) => {
+              const ranking = roundRankings.find(r => r.reviewer_id === member.id);
+              if (!ranking) return null;
 
-              {/* Stage 3: Synthesis */}
-              <div className={`space-y-6 transition-opacity duration-500 ${stages.length >= 2 ? 'opacity-100' : 'opacity-30 pointer-events-none'}`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-green-500/20 text-green-500 flex items-center justify-center font-bold border border-green-500/30">3</div>
-                  <h2 className="text-xl font-bold text-white">Consensus Synthesis</h2>
-                  {stages.includes(3) && <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-                </div>
+              return (
+                <Message.Root
+                  key={`${ranking.round}-${ranking.reviewer_id}`}
+                  role="agent"
+                  name={`${member.name} (Evaluation)`}
+                  avatar="📊"
+                  agentColor={getMemberColor(idx)}
+                  timestamp={ranking.created_at}
+                >
+                  {ranking.reasoning}
+                </Message.Root>
+              );
+            })}
 
-                <div className="bg-green-900/10 rounded-xl border border-green-700/30 p-8 shadow-xl">
-                  {roundSynthesis ? (
-                    <div className="prose prose-invert max-w-none prose-strong:text-brand-primary">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{roundSynthesis.content}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 text-gray-500">
-                      {isStage3Active ? (
-                        <div className="flex flex-col items-center gap-3">
-                          <div className="animate-spin h-6 w-6 border-2 border-gray-600 border-t-green-500 rounded-full"></div>
-                          <span>Chairman is synthesizing...</span>
-                        </div>
-                      ) : 'Waiting...'}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
+            {/* Stage 3: Synthesis */}
+            {roundSynthesis && (
+              <>
+                <Message.Root role="system">
+                  <span className="text-xs font-bold uppercase tracking-wider">Stage 3: Chairman's Synthesis</span>
+                </Message.Root>
+                <Message.Root
+                  role="agent"
+                  name={council.chairman.name}
+                  avatar="🏛️"
+                  agentColor="primary"
+                  timestamp={roundSynthesis.created_at}
+                >
+                  {roundSynthesis.content}
+                </Message.Root>
+              </>
+            )}
+          </RoundContainer>
         );
       })}
 

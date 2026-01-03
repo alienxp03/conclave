@@ -5,7 +5,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { api } from '../lib/api';
 import { useDebateStream } from '../hooks/useDebateStream';
-import { TurnCard } from '../components/TurnCard';
+import { Message } from '../components/Message';
+import { RoundContainer } from '../components/RoundContainer';
 import type { Turn, Conclusion } from '../types';
 
 export function DebateView() {
@@ -325,113 +326,86 @@ export function DebateView() {
       )}
 
       {/* Rounds and Transcript */}
-      <div className="space-y-12">
+      <div className="space-y-8">
         {rounds.map((roundNum) => {
           const roundConclusion = conclusionsByRound[roundNum];
-          const roundTurns = turnsByRound[roundNum] || [];
-          const userTurn = roundTurns.find(t => t.agent_id === 'user');
+          const roundTurns = (turnsByRound[roundNum] || []).sort((a, b) => a.number - b.number);
+          const consensusLabel = roundConclusion
+            ? (roundConclusion.agreed ? '✓ Consensus' : '• Divergent')
+            : undefined;
 
           return (
-            <div key={roundNum} className="space-y-6">
-              <div className="flex items-center gap-4">
-                <div className="h-px flex-1 bg-brand-border" />
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-bold text-[#859289] uppercase tracking-widest">
-                    Round {roundNum}
-                  </span>
-                  {roundConclusion && (
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                      roundConclusion.agreed
-                        ? 'bg-brand-primary/20 text-brand-primary'
-                        : 'bg-brand-secondary/20 text-brand-secondary'
-                    }`}>
-                      {roundConclusion.agreed ? '✓ Consensus' : '• Divergent'}
-                    </span>
-                  )}
-                  <span className="text-xs text-[#859289] bg-brand-bg px-2 py-0.5 rounded-full">
-                    {roundTurns.filter(t => t.agent_id !== 'user').length} turns
-                  </span>
-                </div>
-                <div className="h-px flex-1 bg-brand-border" />
-              </div>
+            <RoundContainer
+              key={roundNum}
+              roundNumber={roundNum}
+              stage={consensusLabel}
+            >
+              {/* All messages in chronological order */}
+              {roundTurns.map((turn) => {
+                if (turn.agent_id === 'user') {
+                  return (
+                    <Message.Root
+                      key={turn.id}
+                      role="user"
+                      name="You"
+                      timestamp={turn.created_at}
+                    >
+                      {turn.content}
+                    </Message.Root>
+                  );
+                }
 
-              {/* User Follow-up Directive */}
-              {userTurn && (
-                <div className="animate-fadeIn bg-gradient-to-r from-brand-primary/10 to-transparent border-l-4 border-brand-primary p-6 rounded-r-xl shadow-inner">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-8 h-8 bg-brand-primary/20 rounded-lg flex items-center justify-center">
-                      <svg className="w-5 h-5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                    </div>
-                    <span className="text-xs font-bold text-brand-primary uppercase tracking-wider">Your Follow-up</span>
-                  </div>
-                  <p className="text-[#d3c6aa] text-base italic pl-11">"{userTurn.content}"</p>
-                </div>
+                const isAgentA = turn.agent_id === debate.agent_a.id;
+                const agent = isAgentA ? debate.agent_a : debate.agent_b;
+
+                return (
+                  <Message.Root
+                    key={turn.id}
+                    role="agent"
+                    name={agent.name}
+                    avatar={isAgentA ? '💭' : '🧠'}
+                    agentColor={isAgentA ? 'primary' : 'secondary'}
+                    timestamp={turn.created_at}
+                    metadata={`Turn ${turn.number}`}
+                  >
+                    {turn.content}
+                  </Message.Root>
+                );
+              })}
+
+              {/* Show streaming turn if it belongs to this round */}
+              {streamingTurn && streamingTurn.round === roundNum && (
+                <Message.Root
+                  role="agent"
+                  name={streamingTurn.agentId === debate.agent_a.id ? debate.agent_a.name : debate.agent_b.name}
+                  avatar={streamingTurn.agentId === debate.agent_a.id ? '💭' : '🧠'}
+                  agentColor={streamingTurn.agentId === debate.agent_a.id ? 'primary' : 'secondary'}
+                  metadata={`Turn ${streamingTurn.number}`}
+                  isStreaming
+                >
+                  {streamingTurn.content}
+                </Message.Root>
               )}
 
-              <div className="space-y-6">
-                {roundTurns.map((turn) => (
-                  <TurnCard key={turn.id} turn={turn} debate={debate} />
-                ))}
-
-                {/* Show streaming turn if it belongs to this round */}
-                {streamingTurn && streamingTurn.round === roundNum && (
-                  <TurnCard
-                    turn={{
-                      id: 'streaming',
-                      debate_id: debate.id,
-                      agent_id: streamingTurn.agentId,
-                      number: streamingTurn.number,
-                      round: streamingTurn.round,
-                      content: streamingTurn.content,
-                      created_at: new Date().toISOString(),
-                    }}
-                    debate={debate}
-                    isStreaming
-                  />
-                )}
-
-                {/* Round Conclusion */}
-                {conclusionsByRound[roundNum] && (
-                  <div
-                    className={`animate-fadeIn bg-gradient-to-br from-brand-card via-brand-card to-brand-bg shadow-2xl rounded-2xl p-8 border-2 ${
-                      conclusionsByRound[roundNum].agreed ? 'border-brand-primary' : 'border-brand-secondary'
-                    } relative overflow-hidden`}
-                  >
-                    <div className="relative z-10">
-                      <div className="flex items-center gap-4 mb-6">
-                        <div
-                          className={`w-12 h-12 rounded-full ${
-                            conclusionsByRound[roundNum].agreed ? 'bg-brand-primary' : 'bg-brand-secondary'
-                          } bg-opacity-20 flex items-center justify-center`}
-                        >
-                          <span className="text-2xl">{conclusionsByRound[roundNum].agreed ? '🤝' : '⚔️'}</span>
-                        </div>
-                        <div>
-                          <h2 className="text-xl font-bold text-[#d3c6aa]">
-                            Consensus Round {roundNum}
-                          </h2>
-                          <p className="text-sm text-[#859289]">
-                            {conclusionsByRound[roundNum].agreed
-                              ? 'Reached agreement'
-                              : 'Different viewpoints maintained'}
-                          </p>
-                        </div>
+              {/* Round Conclusion */}
+              {roundConclusion && (
+                <Message.Root role="system">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{roundConclusion.agreed ? '🤝' : '⚔️'}</span>
+                    <div className="flex-1">
+                      <div className="font-semibold text-sm mb-1">
+                        {roundConclusion.agreed ? 'Consensus Reached' : 'Divergent Views'}
                       </div>
-
-                      <div className="bg-brand-bg bg-opacity-30 rounded-xl p-6 border border-brand-border">
-                        <div className="text-[#d3c6aa] prose prose-invert max-w-none prose-headings:text-[#d3c6aa] prose-strong:text-brand-secondary text-sm">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {conclusionsByRound[roundNum].summary}
-                          </ReactMarkdown>
-                        </div>
+                      <div className="text-xs text-[#9da9a0]">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {roundConclusion.summary}
+                        </ReactMarkdown>
                       </div>
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
+                </Message.Root>
+              )}
+            </RoundContainer>
           );
         })}
 
