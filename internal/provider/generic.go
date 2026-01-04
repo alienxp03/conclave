@@ -42,3 +42,18 @@ func (p *GenericProvider) GenerateWithDir(ctx context.Context, prompt, model, di
 	args = append(args, prompt)
 	return p.ExecuteWithDir(ctx, dir, args...)
 }
+
+// GenerateWithResponseDir sends a prompt and returns a response with metadata.
+// Note: Generic providers may not return structured metadata, so this returns basic response.
+func (p *GenericProvider) GenerateWithResponseDir(ctx context.Context, prompt, model, dir string) (*Response, error) {
+	content, err := p.GenerateWithDir(ctx, prompt, model, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Response{
+		Content:  content,
+		Model:    model,
+		Provider: p.name,
+	}, nil
+}

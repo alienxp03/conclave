@@ -27,6 +27,9 @@ type Provider interface {
 	// GenerateWithDir sends a prompt with a specific model and working directory.
 	GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error)
 
+	// GenerateWithResponseDir sends a prompt and returns a structured response with metadata.
+	GenerateWithResponseDir(ctx context.Context, prompt, model, dir string) (*Response, error)
+
 	// Available checks if the provider's CLI is installed and accessible.
 	Available() bool
 

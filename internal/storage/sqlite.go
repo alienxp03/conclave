@@ -187,6 +187,24 @@ func (s *SQLiteStorage) migrate() {
 	s.db.Exec("ALTER TABLE responses ADD COLUMN round INTEGER NOT NULL DEFAULT 1")
 	s.db.Exec("ALTER TABLE rankings ADD COLUMN round INTEGER NOT NULL DEFAULT 1")
 
+	// Add metadata columns to turns table for usage tracking
+	s.db.Exec("ALTER TABLE turns ADD COLUMN turn_type TEXT NOT NULL DEFAULT 'debate'")
+	s.db.Exec("ALTER TABLE turns ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0")
+	s.db.Exec("ALTER TABLE turns ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0")
+	s.db.Exec("ALTER TABLE turns ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0")
+	s.db.Exec("ALTER TABLE turns ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0")
+	s.db.Exec("ALTER TABLE turns ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+	s.db.Exec("ALTER TABLE turns ADD COLUMN stop_reason TEXT NOT NULL DEFAULT ''")
+
+	// Add metadata columns to responses table for council usage tracking
+	s.db.Exec("ALTER TABLE responses ADD COLUMN response_type TEXT NOT NULL DEFAULT 'response'")
+	s.db.Exec("ALTER TABLE responses ADD COLUMN input_tokens INTEGER NOT NULL DEFAULT 0")
+	s.db.Exec("ALTER TABLE responses ADD COLUMN output_tokens INTEGER NOT NULL DEFAULT 0")
+	s.db.Exec("ALTER TABLE responses ADD COLUMN total_tokens INTEGER NOT NULL DEFAULT 0")
+	s.db.Exec("ALTER TABLE responses ADD COLUMN duration_ms INTEGER NOT NULL DEFAULT 0")
+	s.db.Exec("ALTER TABLE responses ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+	s.db.Exec("ALTER TABLE responses ADD COLUMN stop_reason TEXT NOT NULL DEFAULT ''")
+
 	// Fix responses table constraint (remove member_id foreign key)
 	// Check if constraint exists by checking schema
 	var schema string
@@ -539,12 +557,18 @@ func (s *SQLiteStorage) SetReadOnly(id string, readOnly bool) error {
 // AddTurn adds a turn to a debate.
 func (s *SQLiteStorage) AddTurn(turn *core.Turn) error {
 	query := `
-	INSERT INTO turns (id, debate_id, agent_id, number, round, content, created_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO turns (id, debate_id, agent_id, number, round, content, created_at,
+		turn_type, input_tokens, output_tokens, total_tokens, duration_ms, model, stop_reason)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	if turn.Round == 0 {
 		turn.Round = 1
+	}
+
+	turnType := string(turn.TurnType)
+	if turnType == "" {
+		turnType = string(core.TurnTypeDebate)
 	}
 
 	_, err := s.db.Exec(query,
@@ -555,6 +579,13 @@ func (s *SQLiteStorage) AddTurn(turn *core.Turn) error {
 		turn.Round,
 		turn.Content,
 		turn.CreatedAt,
+		turnType,
+		turn.InputTokens,
+		turn.OutputTokens,
+		turn.TotalTokens,
+		turn.DurationMs,
+		turn.Model,
+		turn.StopReason,
 	)
 
 	if err != nil {
@@ -567,7 +598,9 @@ func (s *SQLiteStorage) AddTurn(turn *core.Turn) error {
 // GetTurns returns all turns for a debate.
 func (s *SQLiteStorage) GetTurns(debateID string) ([]*core.Turn, error) {
 	query := `
-	SELECT id, debate_id, agent_id, number, round, content, created_at
+	SELECT id, debate_id, agent_id, number, round, content, created_at,
+		COALESCE(turn_type, 'debate'), COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+		COALESCE(total_tokens, 0), COALESCE(duration_ms, 0), COALESCE(model, ''), COALESCE(stop_reason, '')
 	FROM turns
 	WHERE debate_id = ?
 	ORDER BY number ASC
@@ -582,6 +615,7 @@ func (s *SQLiteStorage) GetTurns(debateID string) ([]*core.Turn, error) {
 	var turns []*core.Turn
 	for rows.Next() {
 		var turn core.Turn
+		var turnType string
 		err := rows.Scan(
 			&turn.ID,
 			&turn.DebateID,
@@ -590,10 +624,18 @@ func (s *SQLiteStorage) GetTurns(debateID string) ([]*core.Turn, error) {
 			&turn.Round,
 			&turn.Content,
 			&turn.CreatedAt,
+			&turnType,
+			&turn.InputTokens,
+			&turn.OutputTokens,
+			&turn.TotalTokens,
+			&turn.DurationMs,
+			&turn.Model,
+			&turn.StopReason,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan turn: %w", err)
 		}
+		turn.TurnType = core.TurnType(turnType)
 		turns = append(turns, &turn)
 	}
 
@@ -603,7 +645,9 @@ func (s *SQLiteStorage) GetTurns(debateID string) ([]*core.Turn, error) {
 // GetLatestTurn returns the most recent turn for a debate.
 func (s *SQLiteStorage) GetLatestTurn(debateID string) (*core.Turn, error) {
 	query := `
-	SELECT id, debate_id, agent_id, number, round, content, created_at
+	SELECT id, debate_id, agent_id, number, round, content, created_at,
+		COALESCE(turn_type, 'debate'), COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+		COALESCE(total_tokens, 0), COALESCE(duration_ms, 0), COALESCE(model, ''), COALESCE(stop_reason, '')
 	FROM turns
 	WHERE debate_id = ?
 	ORDER BY number DESC
@@ -611,6 +655,7 @@ func (s *SQLiteStorage) GetLatestTurn(debateID string) (*core.Turn, error) {
 	`
 
 	var turn core.Turn
+	var turnType string
 	err := s.db.QueryRow(query, debateID).Scan(
 		&turn.ID,
 		&turn.DebateID,
@@ -619,6 +664,13 @@ func (s *SQLiteStorage) GetLatestTurn(debateID string) (*core.Turn, error) {
 		&turn.Round,
 		&turn.Content,
 		&turn.CreatedAt,
+		&turnType,
+		&turn.InputTokens,
+		&turn.OutputTokens,
+		&turn.TotalTokens,
+		&turn.DurationMs,
+		&turn.Model,
+		&turn.StopReason,
 	)
 
 	if err == sql.ErrNoRows {
@@ -628,6 +680,7 @@ func (s *SQLiteStorage) GetLatestTurn(debateID string) (*core.Turn, error) {
 		return nil, fmt.Errorf("failed to get latest turn: %w", err)
 	}
 
+	turn.TurnType = core.TurnType(turnType)
 	return &turn, nil
 }
 
@@ -1207,12 +1260,18 @@ func (s *SQLiteStorage) ListCouncils(limit, offset int) ([]*core.CouncilSummary,
 // AddResponse adds a response to a council.
 func (s *SQLiteStorage) AddResponse(response *core.Response) error {
 	query := `
-	INSERT INTO responses (id, council_id, member_id, round, content, created_at)
-	VALUES (?, ?, ?, ?, ?, ?)
+	INSERT INTO responses (id, council_id, member_id, round, content, created_at,
+		response_type, input_tokens, output_tokens, total_tokens, duration_ms, model, stop_reason)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	if response.Round == 0 {
 		response.Round = 1
+	}
+
+	responseType := string(response.ResponseType)
+	if responseType == "" {
+		responseType = string(core.ResponseTypeResponse)
 	}
 
 	_, err := s.db.Exec(query,
@@ -1222,6 +1281,13 @@ func (s *SQLiteStorage) AddResponse(response *core.Response) error {
 		response.Round,
 		response.Content,
 		response.CreatedAt,
+		responseType,
+		response.InputTokens,
+		response.OutputTokens,
+		response.TotalTokens,
+		response.DurationMs,
+		response.Model,
+		response.StopReason,
 	)
 
 	if err != nil {
@@ -1234,7 +1300,9 @@ func (s *SQLiteStorage) AddResponse(response *core.Response) error {
 // GetResponses returns all responses for a council.
 func (s *SQLiteStorage) GetResponses(councilID string) ([]*core.Response, error) {
 	query := `
-	SELECT id, council_id, member_id, round, content, created_at
+	SELECT id, council_id, member_id, round, content, created_at,
+		COALESCE(response_type, 'response'), COALESCE(input_tokens, 0), COALESCE(output_tokens, 0),
+		COALESCE(total_tokens, 0), COALESCE(duration_ms, 0), COALESCE(model, ''), COALESCE(stop_reason, '')
 	FROM responses
 	WHERE council_id = ?
 	ORDER BY created_at ASC
@@ -1249,6 +1317,7 @@ func (s *SQLiteStorage) GetResponses(councilID string) ([]*core.Response, error)
 	var responses []*core.Response
 	for rows.Next() {
 		var response core.Response
+		var responseType string
 		err := rows.Scan(
 			&response.ID,
 			&response.CouncilID,
@@ -1256,10 +1325,18 @@ func (s *SQLiteStorage) GetResponses(councilID string) ([]*core.Response, error)
 			&response.Round,
 			&response.Content,
 			&response.CreatedAt,
+			&responseType,
+			&response.InputTokens,
+			&response.OutputTokens,
+			&response.TotalTokens,
+			&response.DurationMs,
+			&response.Model,
+			&response.StopReason,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan response: %w", err)
 		}
+		response.ResponseType = core.ResponseType(responseType)
 		responses = append(responses, &response)
 	}
 
