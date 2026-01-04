@@ -526,7 +526,7 @@ func (e *Engine) executeTurn(ctx context.Context, debate *core.Debate, agent cor
 		turn.InputTokens = resp.Metadata.InputTokens
 		turn.OutputTokens = resp.Metadata.OutputTokens
 		turn.TotalTokens = resp.Metadata.TotalTokens
-		turn.DurationMs = resp.Metadata.DurationMs
+		turn.DurationMs = resp.Metadata.Duration.Milliseconds()
 		turn.StopReason = resp.Metadata.StopReason
 	}
 
@@ -747,7 +747,7 @@ REASONING: [Brief explanation of your vote - 1-2 sentences]`, debate.Topic, hist
 		turn.InputTokens = resp.Metadata.InputTokens
 		turn.OutputTokens = resp.Metadata.OutputTokens
 		turn.TotalTokens = resp.Metadata.TotalTokens
-		turn.DurationMs = resp.Metadata.DurationMs
+		turn.DurationMs = resp.Metadata.Duration.Milliseconds()
 		turn.StopReason = resp.Metadata.StopReason
 	}
 	if err := e.storage.AddTurn(turn); err != nil {
@@ -833,7 +833,7 @@ Use Markdown format.`, debate.Topic, history, consensusStatus)
 		turn.InputTokens = resp.Metadata.InputTokens
 		turn.OutputTokens = resp.Metadata.OutputTokens
 		turn.TotalTokens = resp.Metadata.TotalTokens
-		turn.DurationMs = resp.Metadata.DurationMs
+		turn.DurationMs = resp.Metadata.Duration.Milliseconds()
 		turn.StopReason = resp.Metadata.StopReason
 	}
 	if err := e.storage.AddTurn(turn); err != nil {

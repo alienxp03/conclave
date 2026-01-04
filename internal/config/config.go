@@ -8,6 +8,14 @@ import (
 	"time"
 
 	"github.com/alienxp03/conclave/internal/core"
+	intprovider "github.com/alienxp03/conclave/internal/provider"
+	"github.com/alienxp03/conclave/provider"
+	"github.com/alienxp03/conclave/provider/claude"
+	"github.com/alienxp03/conclave/provider/gemini"
+	"github.com/alienxp03/conclave/provider/generic"
+	"github.com/alienxp03/conclave/provider/openai"
+	"github.com/alienxp03/conclave/provider/opencode"
+	"github.com/alienxp03/conclave/provider/qwen"
 	"gopkg.in/yaml.v3"
 )
 
@@ -149,6 +157,75 @@ func (c *Config) SaveTo(path string) error {
 func (c *Config) GetProvider(name string) (ProviderConfig, bool) {
 	p, ok := c.Providers[name]
 	return p, ok
+}
+
+// ToProviderConfig converts a ProviderConfig to provider.Config.
+func (p ProviderConfig) ToProviderConfig(name string) provider.Config {
+	return provider.Config{
+		Name:         name,
+		Command:      p.Command,
+		Args:         p.Args,
+		DefaultModel: p.DefaultModel,
+		Models:       p.Models,
+		Timeout:      p.Timeout,
+	}
+}
+
+// createProviderFromName creates a provider instance based on the provider name.
+func createProviderFromName(name string, cfg provider.Config) (provider.Provider, error) {
+	switch name {
+	case "claude":
+		return claude.New(cfg), nil
+	case "gemini":
+		return gemini.New(cfg), nil
+	case "openai", "codex":
+		// Support both "openai" and "codex" for backward compatibility
+		if cfg.Name == "" || cfg.Name == "codex" {
+			cfg.Name = "codex" // Keep "codex" as the name for backward compatibility
+		}
+		return openai.New(cfg), nil
+	case "qwen":
+		return qwen.New(cfg), nil
+	case "opencode":
+		return opencode.New(cfg), nil
+	case "mock":
+		return intprovider.NewMockProvider(cfg), nil
+	default:
+		// Unknown providers fall back to generic
+		return generic.New(cfg), nil
+	}
+}
+
+// CreateProvider creates a provider instance from this configuration.
+func (c *Config) CreateProvider(name string) (provider.Provider, error) {
+	provCfg, ok := c.GetProvider(name)
+	if !ok {
+		return nil, fmt.Errorf("provider %s not found in config", name)
+	}
+	if !provCfg.Enabled {
+		return nil, fmt.Errorf("provider %s is disabled", name)
+	}
+	return createProviderFromName(name, provCfg.ToProviderConfig(name))
+}
+
+// CreateRegistry creates a provider registry from this configuration.
+func (c *Config) CreateRegistry() (*intprovider.Registry, error) {
+	registry := intprovider.NewRegistry()
+
+	for name, provCfg := range c.Providers {
+		if !provCfg.Enabled {
+			continue
+		}
+
+		p, err := createProviderFromName(name, provCfg.ToProviderConfig(name))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create provider %s: %w", name, err)
+		}
+
+		registry.Register(p)
+	}
+
+	return registry, nil
 }
 
 // DefaultConfigPath returns the default configuration file path.

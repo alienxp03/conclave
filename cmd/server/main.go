@@ -9,7 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/alienxp03/conclave/internal/provider"
+	"github.com/alienxp03/conclave/internal/config"
 	"github.com/alienxp03/conclave/internal/storage"
 	"github.com/alienxp03/conclave/internal/workspace"
 	"github.com/alienxp03/conclave/web/handlers"
@@ -51,7 +51,12 @@ func main() {
 	}
 
 	// Initialize provider registry
-	registry := provider.DefaultRegistry()
+	cfg := config.Default()
+	registry, err := cfg.CreateRegistry()
+	if err != nil {
+		slog.Error("Failed to initialize provider registry", "error", err)
+		os.Exit(1)
+	}
 
 	// Initialize workspaces
 	workspaces, err := workspace.NewManager()

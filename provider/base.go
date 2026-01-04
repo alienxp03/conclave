@@ -9,16 +9,18 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-
-	"github.com/alienxp03/conclave/internal/config"
 )
 
 const (
 	// MaxOutputSize is the maximum size of CLI output (10MB).
 	MaxOutputSize = 10 * 1024 * 1024
+
+	// DefaultTimeout is the default timeout for CLI commands.
+	DefaultTimeout = 5 * time.Minute
 )
 
 // BaseProvider provides common functionality for CLI-based providers.
+// Specific providers can embed this to inherit standard CLI execution logic.
 type BaseProvider struct {
 	name         string
 	displayName  string
@@ -29,15 +31,20 @@ type BaseProvider struct {
 	timeout      time.Duration
 }
 
-// NewBaseProvider creates a new base provider from config.
-func NewBaseProvider(name, displayName string, cfg config.ProviderConfig) BaseProvider {
+// NewBaseProvider creates a new base provider from configuration.
+func NewBaseProvider(cfg Config) BaseProvider {
 	timeout := cfg.Timeout
 	if timeout == 0 {
-		timeout = 5 * time.Minute
+		timeout = DefaultTimeout
+	}
+
+	displayName := cfg.DisplayName
+	if displayName == "" {
+		displayName = cfg.Name
 	}
 
 	return BaseProvider{
-		name:         name,
+		name:         cfg.Name,
 		displayName:  displayName,
 		command:      cfg.Command,
 		args:         cfg.Args,
@@ -48,21 +55,31 @@ func NewBaseProvider(name, displayName string, cfg config.ProviderConfig) BasePr
 }
 
 // Name returns the provider identifier.
-func (p *BaseProvider) Name() string { return p.name }
+func (p *BaseProvider) Name() string {
+	return p.name
+}
 
 // DisplayName returns the human-friendly name.
-func (p *BaseProvider) DisplayName() string { return p.displayName }
+func (p *BaseProvider) DisplayName() string {
+	return p.displayName
+}
 
 // Models returns available models.
-func (p *BaseProvider) Models() []string { return p.models }
+func (p *BaseProvider) Models() []string {
+	return p.models
+}
 
 // DefaultModel returns the default model.
-func (p *BaseProvider) DefaultModel() string { return p.defaultModel }
+func (p *BaseProvider) DefaultModel() string {
+	return p.defaultModel
+}
 
 // Timeout returns the configured timeout.
-func (p *BaseProvider) Timeout() time.Duration { return p.timeout }
+func (p *BaseProvider) Timeout() time.Duration {
+	return p.timeout
+}
 
-// Available checks if the CLI is installed.
+// Available checks if the CLI tool is installed and accessible.
 func (p *BaseProvider) Available() bool {
 	_, err := exec.LookPath(p.command)
 	return err == nil
@@ -79,7 +96,6 @@ func (p *BaseProvider) ValidateExecutable() error {
 			Err:      err,
 		}
 	}
-	// Verify it's actually executable
 	if path == "" {
 		return &CLIError{
 			Provider: p.name,
@@ -118,24 +134,8 @@ func (l *limitedWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-// GenerateWithDir sends a prompt with a specific model and working directory.
-func (p *BaseProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
-	// Base implementation doesn't know about specific flags, so it just calls GenerateWithModel
-	// Subclasses should override this if they need to pass the directory differently
-	// However, since BaseProvider doesn't implement GenerateWithModel (it's in the specific providers),
-	// this is a bit tricky.
-	// Actually, BaseProvider implements the common Execute method.
-	// Specific providers call Execute.
-	return "", fmt.Errorf("GenerateWithDir not implemented for %s", p.name)
-}
-
-// Execute runs the CLI command with the given arguments.
-func (p *BaseProvider) Execute(ctx context.Context, extraArgs ...string) (string, error) {
-	return p.ExecuteWithDir(ctx, "", extraArgs...)
-}
-
-// ExecuteWithDir runs the CLI command with the given arguments in a specific directory.
-func (p *BaseProvider) ExecuteWithDir(ctx context.Context, dir string, extraArgs ...string) (string, error) {
+// ExecuteCommand runs the CLI command with the given arguments.
+func (p *BaseProvider) ExecuteCommand(ctx context.Context, req *Request) (string, error) {
 	// Validate executable before running
 	if err := p.ValidateExecutable(); err != nil {
 		return "", err
@@ -145,16 +145,22 @@ func (p *BaseProvider) ExecuteWithDir(ctx context.Context, dir string, extraArgs
 	ctx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 
-	allArgs := append(p.args, extraArgs...)
+	// Build command arguments
+	allArgs := append([]string{}, p.args...)
+	if len(req.Args) > 0 {
+		allArgs = append(allArgs, req.Args...)
+	}
+
 	slog.Debug("Executing CLI command",
 		"provider", p.name,
 		"command", p.command,
 		"args", allArgs,
-		"dir", dir,
+		"dir", req.WorkingDir,
 	)
+
 	cmd := exec.CommandContext(ctx, p.command, allArgs...)
-	if dir != "" {
-		cmd.Dir = dir
+	if req.WorkingDir != "" {
+		cmd.Dir = req.WorkingDir
 	}
 
 	// Use size-limited writers to prevent memory issues
