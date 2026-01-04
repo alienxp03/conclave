@@ -1,9 +1,0 @@
-
-🌐 Starting dbate web server on http://localhost:8183
-
-Available endpoints:
-  GET  http://localhost:8183/debates     - List all debates
-  GET  http://localhost:8183/new         - Create new debate form
-  GET  http://localhost:8183/debates/:id - View debate
-
-Press Ctrl+C to stop the server

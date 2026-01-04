@@ -24,7 +24,7 @@ func New(cfg provider.Config) *Provider {
 // Execute sends a request to OpenAI/Codex CLI and returns a structured response.
 func (p *Provider) Execute(ctx context.Context, req *provider.Request) (*provider.Response, error) {
 	// Build arguments
-	args := []string{"--json"}
+	args := []string{"--output-format", "json"}
 
 	// Add model flag if specified
 	model := req.Model

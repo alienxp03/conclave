@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
@@ -12,6 +12,7 @@ const EXAMPLE_TOPICS = [
 
 export function NewDebate() {
   const navigate = useNavigate();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [topic, setTopic] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +45,14 @@ export function NewDebate() {
   });
 
   const isReady = !!(providers?.length && personas?.length && styles?.length);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [topic]);
 
   // Set defaults when data loads
   useEffect(() => {
@@ -180,6 +189,7 @@ export function NewDebate() {
 
           <div>
             <textarea
+              ref={textareaRef}
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -187,7 +197,7 @@ export function NewDebate() {
               required
               autoFocus
               placeholder="e.g., Should AI replace human decision-making in healthcare?"
-              className="block w-full rounded-xl bg-brand-card border-2 border-brand-border text-[#d3c6aa] placeholder-[#5c6a72] focus:border-brand-primary focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 text-xl p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
+              className="block w-full rounded-xl bg-brand-card border-2 border-brand-border text-[#d3c6aa] placeholder-[#5c6a72] focus:border-brand-primary focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 text-base p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
             />
           </div>
 

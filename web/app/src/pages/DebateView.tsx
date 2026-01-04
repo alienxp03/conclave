@@ -172,7 +172,7 @@ export function DebateView() {
               )}
             </div>
             {debate.title && (
-              <p className="text-[#859289] mt-1">{debate.topic}</p>
+              <p className="text-[#859289] mt-1 whitespace-pre-wrap">{debate.topic}</p>
             )}
             <div className="mt-3 flex items-center space-x-4 text-sm text-[#859289]">
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor}`}>

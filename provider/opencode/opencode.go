@@ -23,7 +23,7 @@ func New(cfg provider.Config) *Provider {
 // Execute sends a request to Opencode CLI and returns a structured response.
 func (p *Provider) Execute(ctx context.Context, req *provider.Request) (*provider.Response, error) {
 	// Build arguments
-	args := []string{"--json"}
+	args := []string{"run", "--format", "json"}
 
 	// Add model flag if specified
 	model := req.Model

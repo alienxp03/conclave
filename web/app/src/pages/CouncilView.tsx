@@ -152,8 +152,8 @@ export function CouncilView() {
     <div className="max-w-6xl mx-auto py-4 px-4 space-y-12">
       {/* Header */}
       <div className="bg-brand-card shadow-xl rounded-xl p-8 border border-brand-border">
-        <h1 className="text-3xl font-bold text-white mb-3">{council.title || council.topic}</h1>
-        <p className="text-gray-400 text-lg mb-6">{council.title ? council.topic : ''}</p>
+        <h1 className="text-xl font-bold text-white mb-3">{council.title || council.topic}</h1>
+        <p className="text-gray-400 text-lg mb-6 whitespace-pre-wrap">{council.title ? council.topic : ''}</p>
         <div className="flex items-center gap-6 text-sm text-[#859289]">
           <span className="flex items-center gap-2">
             <svg className="w-5 h-5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
