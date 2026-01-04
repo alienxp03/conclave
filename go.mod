@@ -1,6 +1,6 @@
 module github.com/alienxp03/conclave
 
-go 1.25.0
+go 1.24
 
 require (
 	github.com/jung-kurt/gofpdf v1.16.2

@@ -119,10 +119,16 @@ func getStorage() (storage.Storage, error) {
 }
 
 func getRegistry() *provider.Registry {
-	if appConfig != nil {
-		return provider.RegistryFromConfig(appConfig)
+	cfg := appConfig
+	if cfg == nil {
+		cfg = config.Default()
 	}
-	return provider.DefaultRegistry()
+	registry, err := cfg.CreateRegistry()
+	if err != nil {
+		slog.Error("Failed to create provider registry", "error", err)
+		os.Exit(1)
+	}
+	return registry
 }
 
 // ============================================================================
