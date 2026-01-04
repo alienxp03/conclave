@@ -51,6 +51,27 @@ func (p *MockProvider) GenerateWithDir(ctx context.Context, prompt, model, dir s
 	return p.Generate(ctx, prompt)
 }
 
+// GenerateWithResponseDir generates a simulated response with metadata.
+func (p *MockProvider) GenerateWithResponseDir(ctx context.Context, prompt, model, dir string) (*Response, error) {
+	content, err := p.GenerateWithDir(ctx, prompt, model, dir)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Response{
+		Content:  content,
+		Model:    model,
+		Provider: p.name,
+		Metadata: &ResponseMeta{
+			InputTokens:  len(prompt) / 4, // Simulated token count
+			OutputTokens: len(content) / 4,
+			TotalTokens:  (len(prompt) + len(content)) / 4,
+			DurationMs:   500, // Simulated duration
+			StopReason:   "end_turn",
+		},
+	}, nil
+}
+
 // Available always returns true for mock provider.
 func (p *MockProvider) Available() bool {
 	return true

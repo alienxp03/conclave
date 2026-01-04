@@ -22,6 +22,7 @@ type ResponseMeta struct {
 	InputTokens  int    `json:"input_tokens,omitempty"`
 	OutputTokens int    `json:"output_tokens,omitempty"`
 	TotalTokens  int    `json:"total_tokens,omitempty"`
+	DurationMs   int64  `json:"duration_ms,omitempty"` // Duration in milliseconds from provider JSON
 	StopReason   string `json:"stop_reason,omitempty"`
 	SessionID    string `json:"session_id,omitempty"`
 }
@@ -85,13 +86,34 @@ func ParseClaudeJSON(data string) (*Response, error) {
 	return resp, nil
 }
 
+// GeminiModelStats represents per-model statistics from Gemini CLI.
+type GeminiModelStats struct {
+	API *struct {
+		TotalRequests  int   `json:"totalRequests"`
+		TotalErrors    int   `json:"totalErrors"`
+		TotalLatencyMs int64 `json:"totalLatencyMs"`
+	} `json:"api,omitempty"`
+	Tokens *struct {
+		Prompt     int `json:"prompt"`
+		Candidates int `json:"candidates"`
+		Total      int `json:"total"`
+		Cached     int `json:"cached"`
+		Thoughts   int `json:"thoughts"`
+		Tool       int `json:"tool"`
+	} `json:"tokens,omitempty"`
+}
+
 // GeminiJSONResponse represents Gemini CLI JSON output.
 type GeminiJSONResponse struct {
 	Response string `json:"response,omitempty"` // Main response text from Gemini CLI
 	Stats    *struct {
-		Models map[string]interface{} `json:"models,omitempty"`
-		Tools  map[string]interface{} `json:"tools,omitempty"`
-		Files  map[string]interface{} `json:"files,omitempty"`
+		Models map[string]*GeminiModelStats `json:"models,omitempty"`
+		Tools  *struct {
+			TotalCalls      int   `json:"totalCalls"`
+			TotalSuccess    int   `json:"totalSuccess"`
+			TotalFail       int   `json:"totalFail"`
+			TotalDurationMs int64 `json:"totalDurationMs"`
+		} `json:"tools,omitempty"`
 	} `json:"stats,omitempty"`
 	// Fallback fields for different Gemini API formats
 	Candidates []struct {
@@ -144,27 +166,43 @@ func ParseGeminiJSON(data string) (*Response, error) {
 
 	// Extract metadata from stats if available (Gemini CLI format)
 	if raw.Stats != nil && raw.Stats.Models != nil {
-		// Parse token counts from models stats if present
-		// The stats structure contains model-specific data with tokens
 		if resp.Metadata == nil {
 			resp.Metadata = &ResponseMeta{}
 		}
+		// Aggregate stats from all models used
+		for _, modelStats := range raw.Stats.Models {
+			if modelStats.Tokens != nil {
+				resp.Metadata.InputTokens += modelStats.Tokens.Prompt
+				resp.Metadata.OutputTokens += modelStats.Tokens.Candidates
+				resp.Metadata.TotalTokens += modelStats.Tokens.Total
+			}
+			if modelStats.API != nil {
+				resp.Metadata.DurationMs += modelStats.API.TotalLatencyMs
+			}
+		}
 	}
 
-	// Fallback metadata extraction from usageMetadata
+	// Fallback metadata extraction from usageMetadata (traditional API format)
 	if raw.UsageMetadata != nil {
 		if resp.Metadata == nil {
 			resp.Metadata = &ResponseMeta{}
 		}
-		resp.Metadata.InputTokens = raw.UsageMetadata.PromptTokenCount
-		resp.Metadata.OutputTokens = raw.UsageMetadata.CandidatesTokenCount
-		resp.Metadata.TotalTokens = raw.UsageMetadata.TotalTokenCount
+		// Only use if not already populated from stats
+		if resp.Metadata.InputTokens == 0 {
+			resp.Metadata.InputTokens = raw.UsageMetadata.PromptTokenCount
+		}
+		if resp.Metadata.OutputTokens == 0 {
+			resp.Metadata.OutputTokens = raw.UsageMetadata.CandidatesTokenCount
+		}
+		if resp.Metadata.TotalTokens == 0 {
+			resp.Metadata.TotalTokens = raw.UsageMetadata.TotalTokenCount
+		}
 	}
 
 	return resp, nil
 }
 
-// CodexJSONResponse represents OpenAI/Codex CLI structured output.
+// CodexJSONResponse represents OpenAI/Codex CLI structured output (legacy schema mode).
 type CodexJSONResponse struct {
 	Response string `json:"response,omitempty"`
 	// OpenAI compatible fields
@@ -182,8 +220,85 @@ type CodexJSONResponse struct {
 	Content string `json:"content,omitempty"` // Fallback for simple content field
 }
 
-// ParseCodexJSON parses OpenAI/Codex CLI structured JSON output.
+// CodexJSONEvent represents a streaming event from Codex CLI --json output.
+type CodexJSONEvent struct {
+	Type      string `json:"type"`
+	SessionID string `json:"session_id,omitempty"`
+	// Message event fields
+	Message *struct {
+		Role    string `json:"role,omitempty"`
+		Content string `json:"content,omitempty"`
+	} `json:"message,omitempty"`
+	// Completion/finish event fields
+	Usage *struct {
+		PromptTokens     int   `json:"prompt_tokens"`
+		CompletionTokens int   `json:"completion_tokens"`
+		TotalTokens      int   `json:"total_tokens"`
+		DurationMs       int64 `json:"duration_ms,omitempty"`
+	} `json:"usage,omitempty"`
+	StopReason string `json:"stop_reason,omitempty"`
+	// Text content for streaming
+	Text string `json:"text,omitempty"`
+}
+
+// ParseCodexJSON parses Codex CLI JSON output (supports both streaming and structured formats).
 func ParseCodexJSON(data string) (*Response, error) {
+	resp := &Response{Raw: data}
+
+	// Try parsing as newline-delimited JSON events first (streaming format)
+	lines := strings.Split(data, "\n")
+	var foundEvents bool
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		var event CodexJSONEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+
+		foundEvents = true
+
+		// Extract text content from message or text field
+		if event.Message != nil && event.Message.Content != "" {
+			resp.Content += event.Message.Content
+		}
+		if event.Text != "" {
+			resp.Content += event.Text
+		}
+
+		// Extract metadata from completion/finish events
+		if event.Usage != nil {
+			if resp.Metadata == nil {
+				resp.Metadata = &ResponseMeta{}
+			}
+			resp.Metadata.InputTokens = event.Usage.PromptTokens
+			resp.Metadata.OutputTokens = event.Usage.CompletionTokens
+			resp.Metadata.TotalTokens = event.Usage.TotalTokens
+			resp.Metadata.DurationMs = event.Usage.DurationMs
+		}
+		if event.StopReason != "" {
+			if resp.Metadata == nil {
+				resp.Metadata = &ResponseMeta{}
+			}
+			resp.Metadata.StopReason = event.StopReason
+		}
+		if event.SessionID != "" {
+			if resp.Metadata == nil {
+				resp.Metadata = &ResponseMeta{}
+			}
+			resp.Metadata.SessionID = event.SessionID
+		}
+	}
+
+	if foundEvents && resp.Content != "" {
+		return resp, nil
+	}
+
+	// Fallback: try parsing as single structured JSON object (legacy schema mode)
 	var raw CodexJSONResponse
 	if err := json.Unmarshal([]byte(data), &raw); err != nil {
 		// If not JSON, return as plain text
@@ -191,10 +306,6 @@ func ParseCodexJSON(data string) (*Response, error) {
 			Content: data,
 			Raw:     data,
 		}, nil
-	}
-
-	resp := &Response{
-		Raw: data,
 	}
 
 	// Extract content

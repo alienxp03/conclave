@@ -8,6 +8,8 @@ export interface Agent {
   persona: string;
 }
 
+export type TurnType = 'debate' | 'conclusion' | 'vote' | 'user';
+
 export interface Turn {
   id: string;
   debate_id: string;
@@ -16,6 +18,40 @@ export interface Turn {
   round: number;
   content: string;
   created_at: string;
+  // Metadata from provider
+  turn_type?: TurnType;
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  duration_ms?: number;
+  model?: string;
+  stop_reason?: string;
+}
+
+export interface DebateStats {
+  // Overall totals
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_duration_ms: number;
+  turn_count: number;
+  // Per-agent breakdown
+  agent_a_input_tokens: number;
+  agent_a_output_tokens: number;
+  agent_a_total_tokens: number;
+  agent_a_duration_ms: number;
+  agent_a_turn_count: number;
+  agent_b_input_tokens: number;
+  agent_b_output_tokens: number;
+  agent_b_total_tokens: number;
+  agent_b_duration_ms: number;
+  agent_b_turn_count: number;
+  // Conclusion/voting stats
+  conclusion_input_tokens: number;
+  conclusion_output_tokens: number;
+  conclusion_total_tokens: number;
+  conclusion_duration_ms: number;
+  conclusion_turn_count: number;
 }
 
 export interface Vote {

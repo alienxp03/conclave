@@ -8,7 +8,21 @@ import { api } from '../lib/api';
 import { useDebateStream } from '../hooks/useDebateStream';
 import { Message } from '../components/Message';
 import { RoundContainer } from '../components/RoundContainer';
-import type { Turn, Conclusion } from '../types';
+import type { Turn, Conclusion, DebateStats } from '../types';
+
+// Helper to format tokens
+function formatTokens(n: number): string {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+  return n.toString();
+}
+
+// Helper to format duration
+function formatDuration(ms: number): string {
+  if (ms >= 60000) return (ms / 60000).toFixed(1) + 'm';
+  if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+  return ms + 'ms';
+}
 
 export function DebateView() {
   const { id } = useParams<{ id: string }>();
@@ -35,6 +49,7 @@ export function DebateView() {
 
   const debate = streamedDebate || data?.debate;
   const turns = streamingTurns.length > 0 ? streamingTurns : data?.turns || [];
+  const stats: DebateStats | undefined = data?.stats;
 
   const followUpMutation = useMutation({
     mutationFn: (content: string) => api.addDebateFollowUp(id!, content),
@@ -242,6 +257,58 @@ export function DebateView() {
             <span className="opacity-60 mr-1 text-[#859289]">Session dir:</span> {debate.cwd}
           </div>
         )}
+
+        {/* Usage Stats */}
+        {stats && stats.total_tokens > 0 && (
+          <div className="mt-6 border-t border-brand-border pt-6">
+            <h3 className="text-sm font-medium text-[#859289] mb-3">Usage Statistics</h3>
+            <div className="grid grid-cols-3 gap-4 text-sm">
+              {/* Total */}
+              <div className="bg-brand-bg rounded-lg p-3 border border-brand-border">
+                <div className="text-[#859289] text-xs mb-1">Total</div>
+                <div className="text-[#d3c6aa] font-medium">
+                  <span title="Input tokens">↑{formatTokens(stats.total_input_tokens)}</span>
+                  {' '}
+                  <span title="Output tokens">↓{formatTokens(stats.total_output_tokens)}</span>
+                </div>
+                {stats.total_duration_ms > 0 && (
+                  <div className="text-[#859289] text-xs mt-1">{formatDuration(stats.total_duration_ms)}</div>
+                )}
+              </div>
+              {/* Agent A */}
+              <div className="bg-brand-primary bg-opacity-5 rounded-lg p-3 border border-brand-primary border-opacity-30">
+                <div className="text-brand-primary text-xs mb-1">{debate.agent_a.name.split(' ')[0]}</div>
+                <div className="text-[#d3c6aa] font-medium">
+                  <span title="Input tokens">↑{formatTokens(stats.agent_a_input_tokens)}</span>
+                  {' '}
+                  <span title="Output tokens">↓{formatTokens(stats.agent_a_output_tokens)}</span>
+                </div>
+                {stats.agent_a_duration_ms > 0 && (
+                  <div className="text-[#859289] text-xs mt-1">{formatDuration(stats.agent_a_duration_ms)}</div>
+                )}
+              </div>
+              {/* Agent B */}
+              <div className="bg-brand-secondary bg-opacity-5 rounded-lg p-3 border border-brand-secondary border-opacity-30">
+                <div className="text-brand-secondary text-xs mb-1">{debate.agent_b.name.split(' ')[0]}</div>
+                <div className="text-[#d3c6aa] font-medium">
+                  <span title="Input tokens">↑{formatTokens(stats.agent_b_input_tokens)}</span>
+                  {' '}
+                  <span title="Output tokens">↓{formatTokens(stats.agent_b_output_tokens)}</span>
+                </div>
+                {stats.agent_b_duration_ms > 0 && (
+                  <div className="text-[#859289] text-xs mt-1">{formatDuration(stats.agent_b_duration_ms)}</div>
+                )}
+              </div>
+            </div>
+            {/* Conclusion stats if any */}
+            {stats.conclusion_total_tokens > 0 && (
+              <div className="mt-2 text-xs text-[#859289]">
+                Conclusion: ↑{formatTokens(stats.conclusion_input_tokens)} ↓{formatTokens(stats.conclusion_output_tokens)}
+                {stats.conclusion_duration_ms > 0 && ` • ${formatDuration(stats.conclusion_duration_ms)}`}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Resume Status Indicator */}
@@ -366,6 +433,15 @@ export function DebateView() {
                 const isAgentA = turn.agent_id === debate.agent_a.id;
                 const agent = isAgentA ? debate.agent_a : debate.agent_b;
 
+                // Build metadata string with tokens if available
+                let metadata = `Turn ${turn.number}`;
+                if (turn.input_tokens || turn.output_tokens) {
+                  metadata += ` • ↑${formatTokens(turn.input_tokens || 0)} ↓${formatTokens(turn.output_tokens || 0)}`;
+                  if (turn.duration_ms && turn.duration_ms > 0) {
+                    metadata += ` • ${formatDuration(turn.duration_ms)}`;
+                  }
+                }
+
                 return (
                   <Message.Root
                     key={turn.id}
@@ -374,7 +450,7 @@ export function DebateView() {
                     avatar={isAgentA ? '💭' : '🧠'}
                     agentColor={isAgentA ? 'primary' : 'secondary'}
                     timestamp={turn.created_at}
-                    metadata={`Turn ${turn.number}`}
+                    metadata={metadata}
                   >
                     {turn.content}
                   </Message.Root>

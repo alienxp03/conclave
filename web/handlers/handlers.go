@@ -471,9 +471,13 @@ func (h *Handler) handleAPIDebate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Compute usage stats from turns
+	stats := core.ComputeDebateStats(turns, debate.AgentA.ID, debate.AgentB.ID)
+
 	h.json(w, map[string]interface{}{
 		"debate": debate,
 		"turns":  turns,
+		"stats":  stats,
 	})
 }
 

@@ -2,22 +2,10 @@ package provider
 
 import (
 	"context"
-	"os"
-	"time"
 
 	"github.com/alienxp03/conclave/internal/config"
 	"github.com/alienxp03/conclave/internal/core"
 )
-
-// CodexResponseSchema is the JSON schema for Codex structured output
-const CodexResponseSchema = `{
-  "type": "object",
-  "properties": {
-    "response": { "type": "string" }
-  },
-  "required": ["response"],
-  "additionalProperties": false
-}`
 
 // CodexProvider implements the Provider interface for OpenAI Codex CLI.
 type CodexProvider struct {
@@ -59,14 +47,9 @@ func (p *CodexProvider) GenerateWithModel(ctx context.Context, prompt, model str
 func (p *CodexProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
 	args := []string{"exec"}
 
-	// Use structured JSON output with schema
+	// Use JSON streaming output for metadata capture
 	if p.useJSON {
-		schemaPath, err := p.createSchemaFile()
-		if err != nil {
-			return "", err
-		}
-		defer os.Remove(schemaPath)
-		args = append(args, "--output-schema", schemaPath)
+		args = append(args, "--json")
 	}
 
 	// Add model flag if specified
@@ -76,7 +59,6 @@ func (p *CodexProvider) GenerateWithDir(ctx context.Context, prompt, model, dir 
 
 	args = append(args, prompt)
 
-	start := time.Now()
 	rawOutput, err := p.ExecuteWithDir(ctx, dir, args...)
 	if err != nil {
 		return "", err
@@ -88,7 +70,6 @@ func (p *CodexProvider) GenerateWithDir(ctx context.Context, prompt, model, dir 
 		if parseErr != nil {
 			return rawOutput, nil
 		}
-		resp.Duration = time.Since(start)
 		resp.Provider = p.name
 		return resp.Content, nil
 	}
@@ -98,15 +79,12 @@ func (p *CodexProvider) GenerateWithDir(ctx context.Context, prompt, model, dir 
 
 // GenerateWithResponse sends a prompt and returns a structured response with metadata.
 func (p *CodexProvider) GenerateWithResponse(ctx context.Context, prompt, model string) (*Response, error) {
-	args := []string{"exec"}
+	return p.GenerateWithResponseDir(ctx, prompt, model, "")
+}
 
-	schemaPath, err := p.createSchemaFile()
-	if err != nil {
-		return nil, err
-	}
-	defer os.Remove(schemaPath)
-
-	args = append(args, "--output-schema", schemaPath)
+// GenerateWithResponseDir sends a prompt with working directory and returns structured response.
+func (p *CodexProvider) GenerateWithResponseDir(ctx context.Context, prompt, model, dir string) (*Response, error) {
+	args := []string{"exec", "--json"}
 
 	if model != "" {
 		args = append(args, "--model", model)
@@ -114,8 +92,7 @@ func (p *CodexProvider) GenerateWithResponse(ctx context.Context, prompt, model 
 
 	args = append(args, prompt)
 
-	start := time.Now()
-	rawOutput, err := p.Execute(ctx, args...)
+	rawOutput, err := p.ExecuteWithDir(ctx, dir, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -125,30 +102,9 @@ func (p *CodexProvider) GenerateWithResponse(ctx context.Context, prompt, model 
 		return &Response{
 			Content:  rawOutput,
 			Provider: p.name,
-			Duration: time.Since(start),
 		}, nil
 	}
 
-	resp.Duration = time.Since(start)
 	resp.Provider = p.name
 	return resp, nil
-}
-
-// createSchemaFile writes the response schema to a temporary file
-func (p *CodexProvider) createSchemaFile() (string, error) {
-	tmpDir := os.TempDir()
-
-	f, err := os.CreateTemp(tmpDir, "codex-schema-")
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(CodexResponseSchema)
-	if err != nil {
-		os.Remove(f.Name())
-		return "", err
-	}
-
-	return f.Name(), nil
 }

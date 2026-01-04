@@ -83,6 +83,11 @@ func (p *ClaudeProvider) GenerateWithDir(ctx context.Context, prompt, model, dir
 
 // GenerateWithResponse sends a prompt and returns a structured response with metadata.
 func (p *ClaudeProvider) GenerateWithResponse(ctx context.Context, prompt, model string) (*Response, error) {
+	return p.GenerateWithResponseDir(ctx, prompt, model, "")
+}
+
+// GenerateWithResponseDir sends a prompt with working directory and returns structured response.
+func (p *ClaudeProvider) GenerateWithResponseDir(ctx context.Context, prompt, model, dir string) (*Response, error) {
 	args := []string{}
 
 	// Always use JSON output for structured responses
@@ -94,8 +99,7 @@ func (p *ClaudeProvider) GenerateWithResponse(ctx context.Context, prompt, model
 
 	args = append(args, prompt)
 
-	start := time.Now()
-	rawOutput, err := p.Execute(ctx, args...)
+	rawOutput, err := p.ExecuteWithDir(ctx, dir, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -105,11 +109,12 @@ func (p *ClaudeProvider) GenerateWithResponse(ctx context.Context, prompt, model
 		return &Response{
 			Content:  rawOutput,
 			Provider: p.name,
-			Duration: time.Since(start),
 		}, nil
 	}
 
-	resp.Duration = time.Since(start)
 	resp.Provider = p.name
+	if model != "" {
+		resp.Model = model
+	}
 	return resp, nil
 }

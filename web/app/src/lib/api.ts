@@ -1,4 +1,4 @@
-import type { Debate, Provider, CreateDebateRequest, Turn, Persona, Style, Council, CouncilResponse, CouncilRanking, CreateCouncilRequest, CouncilSummary, SystemInfo } from '../types';
+import type { Debate, Provider, CreateDebateRequest, Turn, Persona, Style, Council, CouncilResponse, CouncilRanking, CreateCouncilRequest, CouncilSummary, SystemInfo, DebateStats } from '../types';
 
 const API_BASE = '/api';
 
@@ -33,7 +33,7 @@ class ApiClient {
     return response.json();
   }
 
-  async getDebate(id: string): Promise<{ debate: Debate; turns: Turn[] }> {
+  async getDebate(id: string): Promise<{ debate: Debate; turns: Turn[]; stats?: DebateStats }> {
     const response = await fetch(`${API_BASE}/debates/${id}`);
     if (!response.ok) throw new Error('Failed to fetch debate');
     return response.json();

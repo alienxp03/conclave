@@ -84,6 +84,11 @@ func (p *OpencodeProvider) GenerateWithDir(ctx context.Context, prompt, model, d
 
 // GenerateWithResponse sends a prompt and returns a structured response with metadata.
 func (p *OpencodeProvider) GenerateWithResponse(ctx context.Context, prompt, model string) (*Response, error) {
+	return p.GenerateWithResponseDir(ctx, prompt, model, "")
+}
+
+// GenerateWithResponseDir sends a prompt with working directory and returns structured response.
+func (p *OpencodeProvider) GenerateWithResponseDir(ctx context.Context, prompt, model, dir string) (*Response, error) {
 	args := []string{"run"}
 	args = append(args, "--format", "json")
 
@@ -93,11 +98,10 @@ func (p *OpencodeProvider) GenerateWithResponse(ctx context.Context, prompt, mod
 
 	args = append(args, prompt)
 
-	slog.Info("Opencode generating response (structured)", "model", model, "prompt_len", len(prompt))
+	slog.Info("Opencode generating response (structured)", "model", model, "prompt_len", len(prompt), "dir", dir)
 	slog.Debug("Opencode prompt", "content", prompt)
 
-	start := time.Now()
-	rawOutput, err := p.Execute(ctx, args...)
+	rawOutput, err := p.ExecuteWithDir(ctx, dir, args...)
 	if err != nil {
 		slog.Error("Opencode generation failed", "error", err)
 		return nil, err
@@ -110,11 +114,12 @@ func (p *OpencodeProvider) GenerateWithResponse(ctx context.Context, prompt, mod
 		return &Response{
 			Content:  rawOutput,
 			Provider: p.name,
-			Duration: time.Since(start),
 		}, nil
 	}
 
-	resp.Duration = time.Since(start)
 	resp.Provider = p.name
+	if model != "" {
+		resp.Model = model
+	}
 	return resp, nil
 }
