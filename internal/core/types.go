@@ -2,6 +2,7 @@
 package core
 
 import (
+	"strings"
 	"time"
 )
 
@@ -36,11 +37,12 @@ type Debate struct {
 
 // Agent represents an AI agent participating in a debate.
 type Agent struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Provider string `json:"provider"` // claude, codex, gemini, qwen
-	Model    string `json:"model"`    // specific model (optional)
-	Persona  string `json:"persona"`  // optimist, skeptic, etc.
+	ID         string `json:"id"`
+	Name       string `json:"name"`        // Real name for UI display (e.g., "claude (Optimist)")
+	MaskedName string `json:"masked_name"` // Masked name for prompts (e.g., "Agent A")
+	Provider   string `json:"provider"`    // claude, codex, gemini, qwen
+	Model      string `json:"model"`       // specific model (optional)
+	Persona    string `json:"persona"`     // optimist, skeptic, etc.
 }
 
 // TurnType represents the type of turn for separate tracking.
@@ -64,13 +66,13 @@ type Turn struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Metadata from provider response
-	TurnType     TurnType `json:"turn_type,omitempty"`      // Type of turn for separate tracking
-	InputTokens  int      `json:"input_tokens,omitempty"`   // Input tokens from provider
-	OutputTokens int      `json:"output_tokens,omitempty"`  // Output tokens from provider
-	TotalTokens  int      `json:"total_tokens,omitempty"`   // Total tokens
-	DurationMs   int64    `json:"duration_ms,omitempty"`    // Duration in milliseconds from provider
-	Model        string   `json:"model,omitempty"`          // Model used for this turn
-	StopReason   string   `json:"stop_reason,omitempty"`    // Stop reason from provider
+	TurnType     TurnType `json:"turn_type,omitempty"`     // Type of turn for separate tracking
+	InputTokens  int      `json:"input_tokens,omitempty"`  // Input tokens from provider
+	OutputTokens int      `json:"output_tokens,omitempty"` // Output tokens from provider
+	TotalTokens  int      `json:"total_tokens,omitempty"`  // Total tokens
+	DurationMs   int64    `json:"duration_ms,omitempty"`   // Duration in milliseconds from provider
+	Model        string   `json:"model,omitempty"`         // Model used for this turn
+	StopReason   string   `json:"stop_reason,omitempty"`   // Stop reason from provider
 }
 
 // DebateStats contains aggregated usage statistics for a debate.
@@ -275,7 +277,7 @@ type CouncilStats struct {
 	MemberStats map[string]*MemberStats `json:"member_stats,omitempty"`
 
 	// Stage breakdown
-	Stage1InputTokens  int   `json:"stage1_input_tokens"`  // Response collection
+	Stage1InputTokens  int   `json:"stage1_input_tokens"` // Response collection
 	Stage1OutputTokens int   `json:"stage1_output_tokens"`
 	Stage1TotalTokens  int   `json:"stage1_total_tokens"`
 	Stage1DurationMs   int64 `json:"stage1_duration_ms"`
@@ -293,12 +295,12 @@ type CouncilStats struct {
 
 // MemberStats contains usage statistics for a single council member.
 type MemberStats struct {
-	MemberID     string `json:"member_id"`
-	InputTokens  int    `json:"input_tokens"`
-	OutputTokens int    `json:"output_tokens"`
-	TotalTokens  int    `json:"total_tokens"`
-	DurationMs   int64  `json:"duration_ms"`
-	ResponseCount int   `json:"response_count"`
+	MemberID      string `json:"member_id"`
+	InputTokens   int    `json:"input_tokens"`
+	OutputTokens  int    `json:"output_tokens"`
+	TotalTokens   int    `json:"total_tokens"`
+	DurationMs    int64  `json:"duration_ms"`
+	ResponseCount int    `json:"response_count"`
 }
 
 // Ranking represents a council member's rankings of all responses in Stage 2.
@@ -353,4 +355,16 @@ type AggregateRanking struct {
 	MemberID   string
 	Positions  []int   // Position in each reviewer's ranking (1-based)
 	AvgRank    float64 // Average position across all rankings
+}
+
+// ReplaceMaskedNames replaces masked agent names with real names in text.
+// This is used to display agent responses to users with real agent identities
+// instead of the masked names used during blind evaluation.
+func ReplaceMaskedNames(text string, nameMap map[string]string) string {
+	result := text
+	for masked, real := range nameMap {
+		// Replace masked name with real name
+		result = strings.ReplaceAll(result, masked, real)
+	}
+	return result
 }

@@ -43,6 +43,15 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 	members := core.AssignDefaultModels(config.Members)
 	members = core.AssignDefaultPersonas(members)
 
+	// Pre-generate IDs for masked name generation
+	memberIDs := make([]string, len(members))
+	for i := range members {
+		memberIDs[i] = core.GenerateID()
+	}
+
+	// Generate masked names for blind evaluation
+	maskedNames := core.GenerateMaskedNamesForList(memberIDs)
+
 	// Create agents from member specs
 	agents := make([]core.Agent, len(members))
 	for i, member := range members {
@@ -62,11 +71,12 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 		}
 
 		agents[i] = core.Agent{
-			ID:       core.GenerateID(),
-			Name:     fmt.Sprintf("%s (%s)", member.Provider, personaDef.Name),
-			Provider: member.Provider,
-			Model:    member.Model,
-			Persona:  member.Persona,
+			ID:         memberIDs[i],
+			Name:       fmt.Sprintf("%s (%s)", member.Provider, personaDef.Name),
+			MaskedName: maskedNames[memberIDs[i]],
+			Provider:   member.Provider,
+			Model:      member.Model,
+			Persona:    member.Persona,
 		}
 	}
 
@@ -77,23 +87,30 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 		if chairmanSpec.Model == "" {
 			chairmanSpec.Model = core.BestModelForProvider[chairmanSpec.Provider]
 		}
+		// Use specified persona, default to "chairman" if not provided
+		chairmanPersona := chairmanSpec.Persona
+		if chairmanPersona == "" {
+			chairmanPersona = "chairman"
+		}
 
 		chairman = core.Agent{
-			ID:       core.GenerateID(),
-			Name:     fmt.Sprintf("Chairman (%s)", chairmanSpec.Provider),
-			Provider: chairmanSpec.Provider,
-			Model:    chairmanSpec.Model,
-			Persona:  "chairman",
+			ID:         core.GenerateID(),
+			Name:       fmt.Sprintf("Chairman (%s)", chairmanSpec.Provider),
+			MaskedName: "Chairman", // Special masked name for chairman
+			Provider:   chairmanSpec.Provider,
+			Model:      chairmanSpec.Model,
+			Persona:    chairmanPersona,
 		}
 	} else {
 		// Use default chairman (first member's provider with best model)
 		defaultChairman := core.GetDefaultChairman(members)
 		chairman = core.Agent{
-			ID:       core.GenerateID(),
-			Name:     fmt.Sprintf("Chairman (%s)", defaultChairman.Provider),
-			Provider: defaultChairman.Provider,
-			Model:    defaultChairman.Model,
-			Persona:  "chairman",
+			ID:         core.GenerateID(),
+			Name:       fmt.Sprintf("Chairman (%s)", defaultChairman.Provider),
+			MaskedName: "Chairman", // Special masked name for chairman
+			Provider:   defaultChairman.Provider,
+			Model:      defaultChairman.Model,
+			Persona:    defaultChairman.Persona,
 		}
 	}
 
@@ -183,6 +200,9 @@ func (e *Engine) RunCouncil(ctx context.Context, council *core.Council) error {
 // RunCouncilWithCallbacks executes all 3 stages with progress callbacks.
 func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Council, callbacks *CouncilCallbacks) error {
 	slog.Info("Starting council execution", "council_id", council.ID, "topic", council.Topic)
+
+	// Ensure masked names for backward compatibility
+	e.ensureMaskedNames(council)
 
 	// Check if already running
 	if _, loaded := e.running.LoadOrStore(council.ID, true); loaded {
@@ -331,7 +351,7 @@ func (e *Engine) CollectResponsesWithCallback(ctx context.Context, council *core
 				ResponseType: core.ResponseTypeResponse,
 				Model:        provResp.Model,
 			}
-			
+
 			// Populate metadata from provider response
 			if provResp.Metadata != nil {
 				response.InputTokens = provResp.Metadata.InputTokens
@@ -436,7 +456,7 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 				CreatedAt:  time.Now(),
 				Model:      provResp.Model,
 			}
-			
+
 			// Populate metadata from provider response
 			if provResp.Metadata != nil {
 				ranking.InputTokens = provResp.Metadata.InputTokens
@@ -513,7 +533,7 @@ func (e *Engine) GenerateSynthesis(ctx context.Context, council *core.Council, r
 		CreatedAt: time.Now(),
 		Model:     provResp.Model,
 	}
-	
+
 	// Populate metadata from provider response
 	if provResp.Metadata != nil {
 		synthesis.InputTokens = provResp.Metadata.InputTokens
@@ -558,7 +578,7 @@ func (e *Engine) buildResponsePromptWithHistory(council *core.Council, agent cor
 	var historyText strings.Builder
 	if len(council.Syntheses) > 0 {
 		latestSynthesis := council.Syntheses[len(council.Syntheses)-1]
-		historyText.WriteString(fmt.Sprintf("\nConclusion from Chairman %s:\n%s\n", council.Chairman.Name, latestSynthesis.Content))
+		historyText.WriteString(fmt.Sprintf("\nConclusion from Chairman %s:\n%s\n", council.Chairman.MaskedName, latestSynthesis.Content))
 	}
 
 	// Check if there's a user directive in the current round
@@ -661,7 +681,7 @@ func (e *Engine) buildRankingPrompt(council *core.Council, formattedResponses st
 	var contextText strings.Builder
 	if len(council.Syntheses) > 0 {
 		latestSynthesis := council.Syntheses[len(council.Syntheses)-1]
-		contextText.WriteString(fmt.Sprintf("\nConclusion from Chairman %s:\n%s\n", council.Chairman.Name, latestSynthesis.Content))
+		contextText.WriteString(fmt.Sprintf("\nConclusion from Chairman %s:\n%s\n", council.Chairman.MaskedName, latestSynthesis.Content))
 	}
 
 	// Check for directive in current round
@@ -708,10 +728,10 @@ Use Markdown format.`, council.Topic, contextText.String(), formattedResponses)
 }
 
 func (e *Engine) buildSynthesisPrompt(council *core.Council, responses []core.Response, aggregateRanks []core.AggregateRanking) string {
-	// Map member IDs to names
+	// Map member IDs to masked names for blind evaluation
 	memberNames := make(map[string]string)
 	for _, m := range council.Members {
-		memberNames[m.ID] = m.Name
+		memberNames[m.ID] = m.MaskedName
 	}
 
 	// Format responses
@@ -765,7 +785,7 @@ func (e *Engine) formatResponsesForRanking(responses []core.Response, members []
 		agent, ok := memberMap[r.MemberID]
 		name := "Unknown"
 		if ok {
-			name = agent.Name
+			name = agent.MaskedName
 		}
 		result.WriteString(fmt.Sprintf("\nResponse by %s:\n%s\n", name, r.Content))
 	}
@@ -784,6 +804,9 @@ func (e *Engine) parseRankingsFromText(text string, responses []core.Response, m
 	for _, r := range responses {
 		if agent, ok := memberMap[r.MemberID]; ok {
 			// Map various ways an agent might be identified
+			// Masked name is the primary identifier for blind evaluation
+			idMap[strings.ToLower(agent.MaskedName)] = r.ID
+			// Keep existing mappings for backward compatibility
 			idMap[strings.ToLower(agent.Name)] = r.ID
 			idMap[strings.ToLower(agent.Provider)] = r.ID
 			idMap[strings.ToLower(agent.Persona)] = r.ID
@@ -934,4 +957,80 @@ func (e *Engine) calculateAggregateRankings(responses []core.Response, rankings 
 	})
 
 	return aggregateRanks
+}
+
+// ensureMaskedNames ensures that agents in a council have masked names.
+// This provides backward compatibility for councils created before masked names were added.
+func (e *Engine) ensureMaskedNames(council *core.Council) {
+	// Ensure all members have masked names
+	for i := range council.Members {
+		if council.Members[i].MaskedName == "" {
+			council.Members[i].MaskedName = fmt.Sprintf("Agent %c", 'A'+i)
+		}
+	}
+	// Ensure chairman has masked name
+	if council.Chairman.MaskedName == "" {
+		council.Chairman.MaskedName = "Chairman"
+	}
+}
+
+// buildNameMap creates a mapping from masked names to real names for display.
+func (e *Engine) buildNameMap(council *core.Council) map[string]string {
+	nameMap := make(map[string]string)
+	for _, member := range council.Members {
+		nameMap[member.MaskedName] = member.Name
+	}
+	nameMap[council.Chairman.MaskedName] = council.Chairman.Name
+	return nameMap
+}
+
+// replaceMaskedNamesInResponse replaces masked names with real names in response content for display.
+func (e *Engine) replaceMaskedNamesInResponse(response *core.Response, council *core.Council) {
+	nameMap := e.buildNameMap(council)
+	response.Content = core.ReplaceMaskedNames(response.Content, nameMap)
+}
+
+// replaceMaskedNamesInResponses replaces masked names with real names in all responses for display.
+func (e *Engine) replaceMaskedNamesInResponses(responses []core.Response, council *core.Council) {
+	nameMap := e.buildNameMap(council)
+	for i := range responses {
+		responses[i].Content = core.ReplaceMaskedNames(responses[i].Content, nameMap)
+	}
+}
+
+// replaceMaskedNamesInRanking replaces masked names with real names in ranking reasoning for display.
+func (e *Engine) replaceMaskedNamesInRanking(ranking *core.Ranking, council *core.Council) {
+	nameMap := e.buildNameMap(council)
+	ranking.Reasoning = core.ReplaceMaskedNames(ranking.Reasoning, nameMap)
+}
+
+// replaceMaskedNamesInSynthesis replaces masked names with real names in synthesis content for display.
+func (e *Engine) replaceMaskedNamesInSynthesis(synthesis *core.CouncilSynthesis, council *core.Council) {
+	nameMap := e.buildNameMap(council)
+	synthesis.Content = core.ReplaceMaskedNames(synthesis.Content, nameMap)
+}
+
+// ReplaceMaskedNamesInCouncilData applies name replacement to all council data for display.
+// This should be called before returning council data to the user.
+func (e *Engine) ReplaceMaskedNamesInCouncilData(council *core.Council, responses []*core.Response, rankings []*core.Ranking, syntheses []*core.CouncilSynthesis) {
+	// Ensure masked names exist
+	e.ensureMaskedNames(council)
+
+	// Build name map once
+	nameMap := e.buildNameMap(council)
+
+	// Replace in responses
+	for _, r := range responses {
+		r.Content = core.ReplaceMaskedNames(r.Content, nameMap)
+	}
+
+	// Replace in rankings
+	for _, r := range rankings {
+		r.Reasoning = core.ReplaceMaskedNames(r.Reasoning, nameMap)
+	}
+
+	// Replace in syntheses
+	for _, synthesis := range syntheses {
+		synthesis.Content = core.ReplaceMaskedNames(synthesis.Content, nameMap)
+	}
 }

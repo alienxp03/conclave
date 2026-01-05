@@ -637,6 +637,9 @@ func (h *Handler) handleAPIGetCouncil(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Replace masked names with real names for display
+	h.councilEngine.ReplaceMaskedNamesInCouncilData(council, responses, rankings, council.Syntheses)
+
 	h.json(w, map[string]interface{}{
 		"council":   council,
 		"responses": responses,
@@ -718,8 +721,12 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Send current state immediately
+	// Replace masked names with real names for display
 	responses, _ := h.storage.GetResponses(id)
+	rankings, _ := h.storage.GetRankings(id)
+	h.councilEngine.ReplaceMaskedNamesInCouncilData(c, responses, rankings, c.Syntheses)
+
+	// Send current state immediately
 	for _, r := range responses {
 		sendEvent("response_collected", map[string]interface{}{
 			"id":         r.ID,
@@ -732,7 +739,6 @@ func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	rankings, _ := h.storage.GetRankings(id)
 	for _, r := range rankings {
 		sendEvent("ranking_collected", map[string]interface{}{
 			"id":          r.ID,

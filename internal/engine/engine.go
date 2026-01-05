@@ -97,6 +97,11 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 	now := time.Now()
 	cwd, _ := os.Getwd()
 
+	// Generate masked names for blind evaluation
+	agentAID := core.GenerateID()
+	agentBID := core.GenerateID()
+	maskedNames := core.GenerateMaskedNamesForList([]string{agentAID, agentBID})
+
 	// Resolve workspace if specified
 	if config.WorkspaceID != "" {
 		if e.workspaces != nil {
@@ -116,18 +121,20 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 		CWD:         cwd,
 		WorkspaceID: config.WorkspaceID,
 		AgentA: core.Agent{
-			ID:       core.GenerateID(),
-			Name:     fmt.Sprintf("Agent A (%s)", personaADef.Name),
-			Provider: config.AgentAProvider,
-			Model:    agentAModel,
-			Persona:  config.AgentAPersona,
+			ID:         agentAID,
+			Name:       fmt.Sprintf("Agent A (%s)", personaADef.Name),
+			MaskedName: maskedNames[agentAID],
+			Provider:   config.AgentAProvider,
+			Model:      agentAModel,
+			Persona:    config.AgentAPersona,
 		},
 		AgentB: core.Agent{
-			ID:       core.GenerateID(),
-			Name:     fmt.Sprintf("Agent B (%s)", personaBDef.Name),
-			Provider: config.AgentBProvider,
-			Model:    agentBModel,
-			Persona:  config.AgentBPersona,
+			ID:         agentBID,
+			Name:       fmt.Sprintf("Agent B (%s)", personaBDef.Name),
+			MaskedName: maskedNames[agentBID],
+			Provider:   config.AgentBProvider,
+			Model:      agentBModel,
+			Persona:    config.AgentBPersona,
 		},
 		Style:     config.Style,
 		MaxTurns:  maxTurns,
@@ -255,6 +262,12 @@ func (e *Engine) GetDebateWithTurns(id string) (*core.Debate, []*core.Turn, erro
 		return nil, nil, err
 	}
 
+	// Ensure masked names for backward compatibility
+	e.ensureMaskedNames(debate)
+
+	// Replace masked names with real names for display
+	e.replaceMaskedNamesInTurns(turns, debate)
+
 	return debate, turns, nil
 }
 
@@ -283,6 +296,9 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 	if debate == nil {
 		return fmt.Errorf("debate not found: %s", debateID)
 	}
+
+	// Ensure masked names for backward compatibility
+	e.ensureMaskedNames(debate)
 
 	// Update status to in progress
 	debate.Status = core.StatusInProgress
@@ -583,9 +599,9 @@ func (e *Engine) buildPrompt(debate *core.Debate, agent core.Agent, turns []*cor
 	for _, t := range turns {
 		var agentName string
 		if t.AgentID == debate.AgentA.ID {
-			agentName = debate.AgentA.Name
+			agentName = debate.AgentA.MaskedName
 		} else if t.AgentID == debate.AgentB.ID {
-			agentName = debate.AgentB.Name
+			agentName = debate.AgentB.MaskedName
 		} else if t.AgentID == "user" {
 			agentName = "User (Follow-up)"
 		} else {
@@ -594,11 +610,11 @@ func (e *Engine) buildPrompt(debate *core.Debate, agent core.Agent, turns []*cor
 		historyBuilder.WriteString(fmt.Sprintf("\n--- %s (Round %d, Turn %d) ---\n%s\n", agentName, t.Round, t.Number, t.Content))
 	}
 
-	// Template data
+	// Template data - use masked names for blind evaluation
 	data := map[string]interface{}{
 		"Topic":            debate.Topic,
-		"AgentName":        agent.Name,
-		"OtherAgentName":   otherAgent.Name,
+		"AgentName":        agent.MaskedName,
+		"OtherAgentName":   otherAgent.MaskedName,
 		"PreviousArgument": previousArgument,
 		"DebateHistory":    historyBuilder.String(),
 		"TurnNumber":       turnNum,
@@ -682,9 +698,9 @@ func (e *Engine) buildDebateHistory(debate *core.Debate, turns []*core.Turn) str
 	for _, t := range turns {
 		var agentName string
 		if t.AgentID == debate.AgentA.ID {
-			agentName = debate.AgentA.Name
+			agentName = debate.AgentA.MaskedName
 		} else {
-			agentName = debate.AgentB.Name
+			agentName = debate.AgentB.MaskedName
 		}
 		historyBuilder.WriteString(fmt.Sprintf("\n--- %s (Turn %d) ---\n%s\n", agentName, t.Number, t.Content))
 	}
@@ -983,4 +999,37 @@ func hashString(s string) uint32 {
 		h = h*31 + uint32(c)
 	}
 	return h
+}
+
+// ensureMaskedNames ensures that agents in a debate have masked names.
+// This provides backward compatibility for debates created before masked names were added.
+func (e *Engine) ensureMaskedNames(debate *core.Debate) {
+	if debate.AgentA.MaskedName == "" {
+		debate.AgentA.MaskedName = core.GenerateMaskedName(debate.AgentA.ID)
+	}
+	if debate.AgentB.MaskedName == "" {
+		debate.AgentB.MaskedName = core.GenerateMaskedName(debate.AgentB.ID)
+	}
+}
+
+// buildNameMap creates a mapping from masked names to real names for display.
+func (e *Engine) buildNameMap(debate *core.Debate) map[string]string {
+	return map[string]string{
+		debate.AgentA.MaskedName: debate.AgentA.Name,
+		debate.AgentB.MaskedName: debate.AgentB.Name,
+	}
+}
+
+// replaceMaskedNamesInTurn replaces masked names with real names in turn content for display.
+func (e *Engine) replaceMaskedNamesInTurn(turn *core.Turn, debate *core.Debate) {
+	nameMap := e.buildNameMap(debate)
+	turn.Content = core.ReplaceMaskedNames(turn.Content, nameMap)
+}
+
+// replaceMaskedNamesInTurns replaces masked names with real names in all turns for display.
+func (e *Engine) replaceMaskedNamesInTurns(turns []*core.Turn, debate *core.Debate) {
+	nameMap := e.buildNameMap(debate)
+	for _, turn := range turns {
+		turn.Content = core.ReplaceMaskedNames(turn.Content, nameMap)
+	}
 }
