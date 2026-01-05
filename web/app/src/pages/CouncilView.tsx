@@ -214,9 +214,9 @@ export function CouncilView() {
   });
 
   return (
-    <div className="max-w-6xl mx-auto py-4 px-4 space-y-12">
+    <div className="max-w-6xl mx-auto py-4 px-2 md:px-4 space-y-12">
       {/* Header */}
-      <div className="bg-brand-card shadow-xl rounded-xl p-8 border border-brand-border">
+      <div className="bg-brand-card shadow-xl rounded-xl p-4 md:p-8 border border-brand-border">
         <h1 className="text-xl font-bold text-white mb-3">{council.title || council.topic}</h1>
         <p className="text-gray-400 text-lg mb-6 whitespace-pre-wrap">{council.title ? council.topic : ''}</p>
 

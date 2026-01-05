@@ -152,21 +152,21 @@ export function NewCouncil() {
   };
 
   return (
-    <div className="min-h-[70vh] flex flex-col items-start justify-center py-12">
-      <div className="max-w-6xl w-full px-4">
-        <div className="mb-12 text-left">
-          <div className="mb-6">
-            <span className="text-5xl">🏛️</span>
+    <div className="min-h-[70vh] flex flex-col items-start justify-center py-6 md:py-12">
+      <div className="max-w-6xl w-full px-2 md:px-4">
+        <div className="mb-8 md:mb-12 text-left">
+          <div className="mb-4 md:mb-6">
+            <span className="text-4xl md:text-5xl">🏛️</span>
           </div>
-          <h1 className="text-4xl font-bold text-white mb-4 leading-tight">
+          <h1 className="text-2xl md:text-4xl font-bold text-white mb-3 md:mb-4 leading-tight">
             Convene a Council
           </h1>
-          <p className="text-lg text-gray-400">
+          <p className="text-base md:text-lg text-gray-400">
             Gather AI agents to deliberate, rank perspectives, and reach a consensus
           </p>
           {systemInfo?.cwd && (
-            <div className="mt-6 flex items-center text-[#d3c6aa] text-xs font-mono bg-brand-bg bg-opacity-40 px-3 py-1.5 rounded border border-brand-border w-fit shadow-inner mx-auto lg:mx-0">
-              <svg className="w-3.5 h-3.5 mr-1.5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="mt-4 md:mt-6 flex items-center text-[#d3c6aa] text-[10px] md:text-xs font-mono bg-brand-bg bg-opacity-40 px-2 md:px-3 py-1 md:py-1.5 rounded border border-brand-border w-fit shadow-inner mx-auto lg:mx-0">
+              <svg className="w-3 h-3 md:w-3.5 md:h-3.5 mr-1.5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
               <span className="opacity-60 mr-1 text-[#859289]">Running in:</span> {systemInfo.cwd}
@@ -174,16 +174,16 @@ export function NewCouncil() {
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
+        <form onSubmit={handleSubmit} className="space-y-6 md:space-y-8">
           {error && (
-            <div className="animate-fadeIn bg-red-900 bg-opacity-50 border-2 border-red-500 text-red-200 px-6 py-4 rounded-xl shadow-lg">
+            <div className="animate-fadeIn bg-red-900 bg-opacity-50 border-2 border-red-500 text-red-200 px-4 md:px-6 py-3 md:py-4 rounded-xl shadow-lg">
               <div className="flex items-start">
-                <svg className="w-6 h-6 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 md:w-6 md:h-6 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                  <h3 className="font-semibold mb-1">Error</h3>
-                  <p className="text-sm">{error}</p>
+                  <h3 className="font-semibold text-sm md:text-base mb-1">Error</h3>
+                  <p className="text-xs md:text-sm">{error}</p>
                 </div>
               </div>
             </div>
@@ -199,29 +199,29 @@ export function NewCouncil() {
               required
               autoFocus
               placeholder="e.g., How should we regulate AI safety?"
-              className="block w-full rounded-xl bg-brand-card border-2 border-brand-border text-[#d3c6aa] placeholder-[#5c6a72] focus:border-brand-primary focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 text-base p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
+              className="block w-full rounded-xl bg-brand-card border-2 border-brand-border text-[#d3c6aa] placeholder-[#5c6a72] focus:border-brand-primary focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 text-sm md:text-base p-4 md:p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
             />
           </div>
 
-          <div className="bg-brand-card p-6 rounded-xl border border-brand-border animate-fadeIn space-y-4">
+          <div className="bg-brand-card p-4 md:p-6 rounded-xl border border-brand-border animate-fadeIn space-y-4">
             <div className="flex justify-between items-center border-b border-brand-border pb-2">
-              <h3 className="text-lg font-medium text-[#d3c6aa]">Council Members</h3>
-              <span className="text-sm text-[#859289]">{members.length} members</span>
+              <h3 className="text-base md:text-lg font-medium text-[#d3c6aa]">Council Members</h3>
+              <span className="text-xs md:text-sm text-[#859289]">{members.length} members</span>
             </div>
             
             <div className="space-y-3">
               {members.map((member, index) => (
-                <div key={index} className="flex gap-4 items-center bg-brand-bg p-3 rounded-lg border border-brand-border">
-                  <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-brand-card rounded-full text-[#859289] text-sm font-bold">
+                <div key={index} className="flex gap-2 md:gap-4 items-center bg-brand-bg p-2 md:p-3 rounded-lg border border-brand-border">
+                  <div className="flex-shrink-0 w-6 h-6 md:w-8 md:h-8 flex items-center justify-center bg-brand-card rounded-full text-[#859289] text-[10px] md:text-sm font-bold">
                     {index + 1}
                   </div>
                   
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-4">
                     <div>
                       <select
                         value={member.Provider}
                         onChange={(e) => handleMemberChange(index, 'Provider', e.target.value)}
-                        className="w-full bg-brand-card border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-sm"
+                        className="w-full bg-brand-card border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                       >
                         {providers?.filter(p => p.name !== 'mock').map((p) => (
                           <option key={p.name} value={p.name} disabled={!p.available}>
@@ -234,7 +234,7 @@ export function NewCouncil() {
                       <select
                         value={member.Model}
                         onChange={(e) => handleMemberChange(index, 'Model', e.target.value)}
-                        className="w-full bg-brand-card border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-sm"
+                        className="w-full bg-brand-card border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                       >
                         {providers?.find(p => p.name === member.Provider)?.models.map((m) => (
                           <option key={m} value={m}>{m}</option>
@@ -245,7 +245,7 @@ export function NewCouncil() {
                       <select
                         value={member.Persona}
                         onChange={(e) => handleMemberChange(index, 'Persona', e.target.value)}
-                        className="w-full bg-brand-card border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-sm"
+                        className="w-full bg-brand-card border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                       >
                         {personas?.map((p) => (
                           <option key={p.id} value={p.id}>{p.name}</option>
@@ -261,7 +261,7 @@ export function NewCouncil() {
                     className="text-gray-500 hover:text-red-400 disabled:opacity-30 disabled:hover:text-gray-500"
                     title="Remove member"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
                   </button>

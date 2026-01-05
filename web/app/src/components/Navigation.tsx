@@ -1,18 +1,14 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 
-export function Navigation() {
-  const location = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebar-collapsed');
-    return saved === 'true';
-  });
+export interface NavigationProps {
+  isCollapsed: boolean;
+  setIsCollapsed: (collapsed: boolean) => void;
+}
 
-  useEffect(() => {
-    localStorage.setItem('sidebar-collapsed', String(isCollapsed));
-  }, [isCollapsed]);
+export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
+  const location = useLocation();
 
   const { data: debates } = useQuery({
     queryKey: ['debates'],
@@ -38,8 +34,11 @@ export function Navigation() {
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   return (
-    <div className={`${isCollapsed ? 'w-16' : 'w-64'} flex-shrink-0 bg-brand-card border-r border-brand-border flex flex-col h-screen overflow-hidden transition-all duration-300`}>
-      <div className="p-4 border-b border-brand-border flex items-center justify-between">
+    <div className={`
+      ${isCollapsed ? 'w-0 md:w-16 -translate-x-full md:translate-x-0' : 'w-64 translate-x-0'} 
+      flex-shrink-0 bg-brand-card border-r border-brand-border flex flex-col h-screen overflow-hidden transition-all duration-300 fixed md:relative z-40
+    `}>
+      <div className={`p-4 border-b border-brand-border flex items-center justify-between ${isCollapsed ? 'opacity-0 md:opacity-100' : 'opacity-100'}`}>
         {!isCollapsed ? (
           <>
             <Link to="/" className="flex items-center space-x-2 group">

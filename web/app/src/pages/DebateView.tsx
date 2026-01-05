@@ -160,7 +160,7 @@ export function DebateView() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="bg-brand-card shadow-xl rounded-xl p-8 border border-brand-border">
+      <div className="bg-brand-card shadow-xl rounded-xl p-4 md:p-8 border border-brand-border">
         <div className="flex justify-between items-start">
           <div className="flex-1">
             <div className="flex items-center space-x-3">

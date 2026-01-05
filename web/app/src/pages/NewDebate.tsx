@@ -133,12 +133,12 @@ export function NewDebate() {
   };
 
   return (
-    <div className="min-h-[70vh] flex flex-col items-start justify-center py-12">
-      <div className="max-w-4xl w-full px-4">
-        <div className="mb-12 text-left">
-          <div className="mb-6 flex justify-start">
+    <div className="min-h-[70vh] flex flex-col items-start justify-center py-6 md:py-12">
+      <div className="max-w-4xl w-full px-2 md:px-4">
+        <div className="mb-8 md:mb-12 text-left">
+          <div className="mb-4 md:mb-6 flex justify-start">
             <span className="text-brand-primary">
-              <svg className="w-16 h-16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <svg className="w-12 h-12 md:w-16 md:h-16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.5997 2.37562 15.1116 3.04348 16.4522L2 22L7.54777 20.9565C8.88837 21.6244 10.4003 22 12 22Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M8 12H8.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 <path d="M12 12H12.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -146,15 +146,15 @@ export function NewDebate() {
               </svg>
             </span>
           </div>
-          <h1 className="text-4xl font-bold text-white mb-4 leading-tight">
+          <h1 className="text-2xl md:text-4xl font-bold text-white mb-3 md:mb-4 leading-tight">
             What should we debate?
           </h1>
-          <p className="text-lg text-gray-400">
+          <p className="text-base md:text-lg text-gray-400">
             Enter a question and watch AI agents discuss different perspectives
           </p>
           {systemInfo?.cwd && (
-            <div className="mt-6 flex items-center text-[#d3c6aa] text-xs font-mono bg-brand-bg bg-opacity-40 px-3 py-1.5 rounded border border-brand-border w-fit shadow-inner mx-auto lg:mx-0">
-              <svg className="w-3.5 h-3.5 mr-1.5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="mt-4 md:mt-6 flex items-center text-[#d3c6aa] text-[10px] md:text-xs font-mono bg-brand-bg bg-opacity-40 px-2 md:px-3 py-1 md:py-1.5 rounded border border-brand-border w-fit shadow-inner mx-auto lg:mx-0">
+              <svg className="w-3 h-3 md:w-3.5 md:h-3.5 mr-1.5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
               </svg>
               <span className="opacity-60 mr-1 text-[#859289]">Running in:</span> {systemInfo.cwd}
@@ -162,12 +162,12 @@ export function NewDebate() {
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
+        <form onSubmit={handleSubmit} className="space-y-6 md:space-y-8">
           {error && (
-            <div className="animate-fadeIn bg-red-900 bg-opacity-50 border-2 border-red-500 text-red-200 px-6 py-4 rounded-xl shadow-lg">
+            <div className="animate-fadeIn bg-red-900 bg-opacity-50 border-2 border-red-500 text-red-200 px-4 md:px-6 py-3 md:py-4 rounded-xl shadow-lg">
               <div className="flex items-start">
                 <svg
-                  className="w-6 h-6 mr-3 flex-shrink-0"
+                  className="w-5 h-5 md:w-6 md:h-6 mr-3 flex-shrink-0"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -180,8 +180,8 @@ export function NewDebate() {
                   />
                 </svg>
                 <div>
-                  <h3 className="font-semibold mb-1">Error</h3>
-                  <p className="text-sm">{error}</p>
+                  <h3 className="font-semibold text-sm md:text-base mb-1">Error</h3>
+                  <p className="text-xs md:text-sm">{error}</p>
                 </div>
               </div>
             </div>
@@ -197,7 +197,7 @@ export function NewDebate() {
               required
               autoFocus
               placeholder="e.g., Should AI replace human decision-making in healthcare?"
-              className="block w-full rounded-xl bg-brand-card border-2 border-brand-border text-[#d3c6aa] placeholder-[#5c6a72] focus:border-brand-primary focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 text-base p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
+              className="block w-full rounded-xl bg-brand-card border-2 border-brand-border text-[#d3c6aa] placeholder-[#5c6a72] focus:border-brand-primary focus:ring-4 focus:ring-brand-primary focus:ring-opacity-20 text-sm md:text-base p-4 md:p-6 transition-all duration-200 shadow-lg hover:shadow-2xl outline-none"
             />
           </div>
 
@@ -205,22 +205,22 @@ export function NewDebate() {
              <button
               type="button"
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-sm text-[#859289] hover:text-brand-primary underline decoration-dotted underline-offset-4"
+              className="text-xs md:text-sm text-[#859289] hover:text-brand-primary underline decoration-dotted underline-offset-4"
             >
               {showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options'}
             </button>
           </div>
 
           {showAdvanced && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-brand-card p-6 rounded-xl border border-brand-border animate-fadeIn">
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-[#d3c6aa] border-b border-brand-border pb-2">Agent A</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 bg-brand-card p-4 md:p-6 rounded-xl border border-brand-border animate-fadeIn">
+              <div className="space-y-3 md:space-y-4">
+                <h3 className="text-base md:text-lg font-medium text-[#d3c6aa] border-b border-brand-border pb-2">Agent A</h3>
                 <div>
-                  <label className="block text-sm font-medium text-[#859289] mb-1">Provider</label>
+                  <label className="block text-xs md:text-sm font-medium text-[#859289] mb-1">Provider</label>
                   <select
                     value={config.agent_a_provider}
                     onChange={(e) => handleProviderChange('a', e.target.value)}
-                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                   >
                     {providers?.filter(p => p.name !== 'mock').map((p) => (
                       <option key={p.name} value={p.name} disabled={!p.available}>
@@ -230,11 +230,11 @@ export function NewDebate() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#859289] mb-1">Model</label>
+                  <label className="block text-xs md:text-sm font-medium text-[#859289] mb-1">Model</label>
                   <select
                     value={config.agent_a_model}
                     onChange={(e) => setConfig({ ...config, agent_a_model: e.target.value })}
-                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                   >
                     {providers?.find(p => p.name === config.agent_a_provider)?.models.map((m) => (
                       <option key={m} value={m}>{m}</option>
@@ -242,11 +242,11 @@ export function NewDebate() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#859289] mb-1">Persona</label>
+                  <label className="block text-xs md:text-sm font-medium text-[#859289] mb-1">Persona</label>
                   <select
                     value={config.agent_a_persona}
                     onChange={(e) => setConfig({ ...config, agent_a_persona: e.target.value })}
-                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                   >
                     {personas?.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
@@ -255,14 +255,14 @@ export function NewDebate() {
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-[#d3c6aa] border-b border-brand-border pb-2">Agent B</h3>
+              <div className="space-y-3 md:space-y-4">
+                <h3 className="text-base md:text-lg font-medium text-[#d3c6aa] border-b border-brand-border pb-2">Agent B</h3>
                 <div>
-                  <label className="block text-sm font-medium text-[#859289] mb-1">Provider</label>
+                  <label className="block text-xs md:text-sm font-medium text-[#859289] mb-1">Provider</label>
                   <select
                     value={config.agent_b_provider}
                     onChange={(e) => handleProviderChange('b', e.target.value)}
-                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                   >
                     {providers?.filter(p => p.name !== 'mock').map((p) => (
                       <option key={p.name} value={p.name} disabled={!p.available}>
@@ -272,11 +272,11 @@ export function NewDebate() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#859289] mb-1">Model</label>
+                  <label className="block text-xs md:text-sm font-medium text-[#859289] mb-1">Model</label>
                   <select
                     value={config.agent_b_model}
                     onChange={(e) => setConfig({ ...config, agent_b_model: e.target.value })}
-                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                   >
                     {providers?.find(p => p.name === config.agent_b_provider)?.models.map((m) => (
                       <option key={m} value={m}>{m}</option>
@@ -284,11 +284,11 @@ export function NewDebate() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#859289] mb-1">Persona</label>
+                  <label className="block text-xs md:text-sm font-medium text-[#859289] mb-1">Persona</label>
                   <select
                     value={config.agent_b_persona}
                     onChange={(e) => setConfig({ ...config, agent_b_persona: e.target.value })}
-                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                    className="w-full bg-brand-bg border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                   >
                     {personas?.map((p) => (
                       <option key={p.id} value={p.id}>{p.name}</option>
@@ -297,14 +297,14 @@ export function NewDebate() {
                 </div>
               </div>
 
-              <div className="md:col-span-2 space-y-4 pt-4 border-t border-brand-border">
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="md:col-span-2 space-y-3 md:space-y-4 pt-4 border-t border-brand-border">
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                     <div>
-                        <label className="block text-sm font-medium text-[#859289] mb-1">Debate Style</label>
+                        <label className="block text-xs md:text-sm font-medium text-[#859289] mb-1">Debate Style</label>
                         <select
                             value={config.style}
                             onChange={(e) => setConfig({ ...config, style: e.target.value })}
-                            className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                            className="w-full bg-brand-bg border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                         >
                             {styles?.map((s) => (
                             <option key={s.id} value={s.id}>{s.name}</option>
@@ -312,14 +312,14 @@ export function NewDebate() {
                         </select>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-[#859289] mb-1">Max Turns (per agent)</label>
+                        <label className="block text-xs md:text-sm font-medium text-[#859289] mb-1">Max Turns (per agent)</label>
                         <input
                             type="number"
                             min="1"
                             max="20"
                             value={config.max_turns}
                             onChange={(e) => setConfig({ ...config, max_turns: parseInt(e.target.value) })}
-                            className="w-full bg-brand-bg border border-brand-border rounded-lg px-3 py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary"
+                            className="w-full bg-brand-bg border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                         />
                     </div>
                  </div>
