@@ -6,17 +6,19 @@
 
 # Commands
 
-- `make serve` - Start the conclave web server.
-- `make install` - Install conclave binary to system.
+- `make serve` - Start the conclave web server. Log is at logs/dev.log
 
 # How to test
 
 - Note: Prioritize Playwright MCP tests for web UI functionality.
 - Example:
   - Go to `http://localhost:8182`.
-  - Question: "Should I use microservices? 3 engineers total."
-  - Council member 1: provider: gemini, model: gemini-3-flash-preview, persona: Optimist
-  - Council member 2: provider: opencode, model: zai-coding-plan/glm-4.7: persona: Pragmatist
+  - Question: "Should I use microservices? 3 engineers total.". Submit
+
+# How to add, update features
+
+- Always add tests for new features.
+- Only verify via Playwright MCP once the features are verified via gotest. Playwright are expensive and slow, so only run them when necessary.
 
 # How to run each agent individually
 

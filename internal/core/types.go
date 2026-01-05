@@ -208,6 +208,14 @@ type CouncilSynthesis struct {
 	Round     int       `json:"round"`
 	Content   string    `json:"content"`
 	CreatedAt time.Time `json:"created_at"`
+
+	// Metadata from provider response
+	InputTokens  int    `json:"input_tokens,omitempty"`
+	OutputTokens int    `json:"output_tokens,omitempty"`
+	TotalTokens  int    `json:"total_tokens,omitempty"`
+	DurationMs   int64  `json:"duration_ms,omitempty"`
+	Model        string `json:"model,omitempty"`
+	StopReason   string `json:"stop_reason,omitempty"`
 }
 
 // Council represents a multi-agent council session.
@@ -302,6 +310,14 @@ type Ranking struct {
 	Rankings   []string  `json:"rankings"` // Ordered list of response IDs (best to worst)
 	Reasoning  string    `json:"reasoning,omitempty"`
 	CreatedAt  time.Time `json:"created_at"`
+
+	// Metadata from provider response
+	InputTokens  int    `json:"input_tokens,omitempty"`
+	OutputTokens int    `json:"output_tokens,omitempty"`
+	TotalTokens  int    `json:"total_tokens,omitempty"`
+	DurationMs   int64  `json:"duration_ms,omitempty"`
+	Model        string `json:"model,omitempty"`
+	StopReason   string `json:"stop_reason,omitempty"`
 }
 
 // CouncilSummary is a lightweight representation for listing councils.

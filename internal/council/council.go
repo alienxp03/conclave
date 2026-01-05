@@ -256,24 +256,12 @@ func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Coun
 
 	// Stage 3: Synthesis
 	slog.Debug("Stage 3: Generating synthesis", "council_id", council.ID)
-	synthesisContent, err := e.GenerateSynthesis(ctx, council, currentResponses, currentRankings)
+	synthesis, err := e.GenerateSynthesis(ctx, council, currentResponses, currentRankings)
 	if err != nil {
 		slog.Error("Stage 3 failed", "error", err)
 		council.Status = core.StatusFailed
 		e.storage.UpdateCouncil(council)
 		return fmt.Errorf("stage 3 failed: %w", err)
-	}
-
-	// Update council
-	round := 1
-	if len(currentResponses) > 0 {
-		round = currentResponses[0].Round
-	}
-
-	synthesis := &core.CouncilSynthesis{
-		Round:     round,
-		Content:   synthesisContent,
-		CreatedAt: time.Now(),
 	}
 
 	if callbacks != nil && callbacks.OnSynthesisComplete != nil {
@@ -327,19 +315,30 @@ func (e *Engine) CollectResponsesWithCallback(ctx context.Context, council *core
 				return
 			}
 
-			content, err := prov.GenerateWithModel(ctx, prompt, agent.Model)
+			provResp, err := prov.GenerateWithResponseDir(ctx, prompt, agent.Model, council.CWD)
 			if err != nil {
 				resultChan <- responseResult{agent: agent, err: fmt.Errorf("generation failed for %s: %w", agent.Name, err)}
 				return
 			}
 
 			response := core.Response{
-				ID:        core.GenerateID(),
-				CouncilID: council.ID,
-				MemberID:  agent.ID,
-				Round:     round,
-				Content:   content,
-				CreatedAt: time.Now(),
+				ID:           core.GenerateID(),
+				CouncilID:    council.ID,
+				MemberID:     agent.ID,
+				Round:        round,
+				Content:      provResp.Content,
+				CreatedAt:    time.Now(),
+				ResponseType: core.ResponseTypeResponse,
+				Model:        provResp.Model,
+			}
+			
+			// Populate metadata from provider response
+			if provResp.Metadata != nil {
+				response.InputTokens = provResp.Metadata.InputTokens
+				response.OutputTokens = provResp.Metadata.OutputTokens
+				response.TotalTokens = provResp.Metadata.TotalTokens
+				response.DurationMs = provResp.Metadata.Duration.Milliseconds()
+				response.StopReason = provResp.Metadata.StopReason
 			}
 
 			resultChan <- responseResult{agent: agent, response: response}
@@ -409,16 +408,16 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 				return
 			}
 
-			content, err := prov.GenerateWithModel(ctx, prompt, agent.Model)
+			provResp, err := prov.GenerateWithResponseDir(ctx, prompt, agent.Model, council.CWD)
 			if err != nil {
 				resultChan <- rankingResult{agent: agent, err: fmt.Errorf("generation failed for %s: %w", agent.Name, err)}
 				return
 			}
 
 			// Parse rankings from response
-			rankedIDs, err := e.parseRankingsFromText(content, responses, council.Members)
+			rankedIDs, err := e.parseRankingsFromText(provResp.Content, responses, council.Members)
 			if err != nil {
-				resultChan <- rankingResult{agent: agent, content: content, err: fmt.Errorf("failed to parse rankings for %s: %w\n\nRaw response:\n%s", agent.Name, err, content)}
+				resultChan <- rankingResult{agent: agent, content: provResp.Content, err: fmt.Errorf("failed to parse rankings for %s: %w\n\nRaw response:\n%s", agent.Name, err, provResp.Content)}
 				return
 			}
 
@@ -433,11 +432,21 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 				ReviewerID: agent.ID,
 				Round:      round,
 				Rankings:   rankedIDs,
-				Reasoning:  content,
+				Reasoning:  provResp.Content,
 				CreatedAt:  time.Now(),
+				Model:      provResp.Model,
+			}
+			
+			// Populate metadata from provider response
+			if provResp.Metadata != nil {
+				ranking.InputTokens = provResp.Metadata.InputTokens
+				ranking.OutputTokens = provResp.Metadata.OutputTokens
+				ranking.TotalTokens = provResp.Metadata.TotalTokens
+				ranking.DurationMs = provResp.Metadata.Duration.Milliseconds()
+				ranking.StopReason = provResp.Metadata.StopReason
 			}
 
-			resultChan <- rankingResult{agent: agent, ranking: ranking, content: content}
+			resultChan <- rankingResult{agent: agent, ranking: ranking, content: provResp.Content}
 		}(member)
 	}
 
@@ -474,7 +483,7 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 }
 
 // GenerateSynthesis implements Stage 3: chairman synthesizes all responses and rankings.
-func (e *Engine) GenerateSynthesis(ctx context.Context, council *core.Council, responses []core.Response, rankings []core.Ranking) (string, error) {
+func (e *Engine) GenerateSynthesis(ctx context.Context, council *core.Council, responses []core.Response, rankings []core.Ranking) (*core.CouncilSynthesis, error) {
 	// Calculate aggregate rankings
 	aggregateRanks := e.calculateAggregateRankings(responses, rankings, council.Members)
 
@@ -484,12 +493,34 @@ func (e *Engine) GenerateSynthesis(ctx context.Context, council *core.Council, r
 	// Execute chairman
 	prov, err := e.registry.Get(council.Chairman.Provider)
 	if err != nil {
-		return "", fmt.Errorf("chairman provider not found: %w", err)
+		return nil, fmt.Errorf("chairman provider not found: %w", err)
 	}
 
-	synthesis, err := prov.GenerateWithModel(ctx, prompt, council.Chairman.Model)
+	provResp, err := prov.GenerateWithResponseDir(ctx, prompt, council.Chairman.Model, council.CWD)
 	if err != nil {
-		return "", fmt.Errorf("synthesis generation failed: %w", err)
+		return nil, fmt.Errorf("synthesis generation failed: %w", err)
+	}
+
+	// Determine round
+	round := 1
+	if len(responses) > 0 {
+		round = responses[0].Round
+	}
+
+	synthesis := &core.CouncilSynthesis{
+		Round:     round,
+		Content:   provResp.Content,
+		CreatedAt: time.Now(),
+		Model:     provResp.Model,
+	}
+	
+	// Populate metadata from provider response
+	if provResp.Metadata != nil {
+		synthesis.InputTokens = provResp.Metadata.InputTokens
+		synthesis.OutputTokens = provResp.Metadata.OutputTokens
+		synthesis.TotalTokens = provResp.Metadata.TotalTokens
+		synthesis.DurationMs = provResp.Metadata.Duration.Milliseconds()
+		synthesis.StopReason = provResp.Metadata.StopReason
 	}
 
 	return synthesis, nil

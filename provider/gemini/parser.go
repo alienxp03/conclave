@@ -15,8 +15,9 @@ type ModelStats struct {
 		TotalLatencyMs int64 `json:"totalLatencyMs"`
 	} `json:"api,omitempty"`
 	Tokens *struct {
-		Prompt     int `json:"prompt"`
-		Candidates int `json:"candidates"`
+		Input      int `json:"input"`      // Actual input tokens (preferred)
+		Prompt     int `json:"prompt"`     // Fallback for older formats
+		Candidates int `json:"candidates"` // Output tokens
 		Total      int `json:"total"`
 		Cached     int `json:"cached"`
 		Thoughts   int `json:"thoughts"`
@@ -91,10 +92,15 @@ func ParseJSON(data string, duration time.Duration) (*provider.Response, error) 
 		if resp.Metadata == nil {
 			resp.Metadata = &provider.Metadata{Duration: duration}
 		}
-		// Aggregate stats from all models used
+	// Aggregate stats from all models used
 		for _, modelStats := range raw.Stats.Models {
 			if modelStats.Tokens != nil {
-				resp.Metadata.InputTokens += modelStats.Tokens.Prompt
+				// Use Input preferentially, fallback to Prompt
+				inputTokens := modelStats.Tokens.Input
+				if inputTokens == 0 {
+					inputTokens = modelStats.Tokens.Prompt
+				}
+				resp.Metadata.InputTokens += inputTokens
 				resp.Metadata.OutputTokens += modelStats.Tokens.Candidates
 				resp.Metadata.TotalTokens += modelStats.Tokens.Total
 			}

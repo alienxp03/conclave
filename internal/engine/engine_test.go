@@ -10,9 +10,10 @@ import (
 	"github.com/alienxp03/conclave/internal/core"
 	"github.com/alienxp03/conclave/internal/provider"
 	"github.com/alienxp03/conclave/internal/storage"
+	extprovider "github.com/alienxp03/conclave/provider"
 )
 
-// MockProvider for testing
+// MockProvider for testing - implements extprovider.Provider interface
 type MockProvider struct {
 	name      string
 	available bool
@@ -20,19 +21,37 @@ type MockProvider struct {
 	callCount int
 }
 
-func (m *MockProvider) Name() string        { return m.name }
-func (m *MockProvider) DisplayName() string { return m.name }
-func (m *MockProvider) Available() bool     { return m.available }
-func (m *MockProvider) Generate(ctx context.Context, prompt string) (string, error) {
+func (m *MockProvider) Name() string    { return m.name }
+func (m *MockProvider) Available() bool { return m.available }
+
+// Execute implements the provider.Provider interface
+func (m *MockProvider) Execute(ctx context.Context, req *extprovider.Request) (*extprovider.Response, error) {
 	idx := m.callCount % len(m.responses)
 	m.callCount++
-	return m.responses[idx], nil
+	return &extprovider.Response{
+		Content:  m.responses[idx],
+		Model:    "test-model",
+		Provider: m.name,
+	}, nil
+}
+
+// Legacy methods for backward compatibility with internal/provider.Provider
+func (m *MockProvider) DisplayName() string { return m.name }
+func (m *MockProvider) Generate(ctx context.Context, prompt string) (string, error) {
+	resp, err := m.Execute(ctx, &extprovider.Request{Prompt: prompt})
+	if err != nil {
+		return "", err
+	}
+	return resp.Content, nil
 }
 func (m *MockProvider) GenerateWithModel(ctx context.Context, prompt, model string) (string, error) {
 	return m.Generate(ctx, prompt)
 }
 func (m *MockProvider) GenerateWithDir(ctx context.Context, prompt, model, dir string) (string, error) {
 	return m.Generate(ctx, prompt)
+}
+func (m *MockProvider) GenerateWithResponseDir(ctx context.Context, prompt, model, dir string) (*extprovider.Response, error) {
+	return m.Execute(ctx, &extprovider.Request{Prompt: prompt, Model: model, WorkingDir: dir})
 }
 func (m *MockProvider) Models() []string       { return []string{"test-model"} }
 func (m *MockProvider) DefaultModel() string   { return "test-model" }
@@ -288,7 +307,7 @@ func TestRunDebate(t *testing.T) {
 		AgentBProvider: "mock",
 		AgentBPersona:  "skeptic",
 		Style:          "collaborative",
-		MaxTurns:       2, // 4 total turns
+		MaxTurns:       2, // 4 debate turns total (2 per agent)
 	}
 	debate, _ := eng.CreateDebate(ctx, config)
 
@@ -301,8 +320,9 @@ func TestRunDebate(t *testing.T) {
 		t.Fatalf("failed: %v", err)
 	}
 
+	// Callback is only called for debate turns (4)
 	if turnCount != 4 {
-		t.Errorf("wrong turn count: got %d, want 4", turnCount)
+		t.Errorf("wrong callback count: got %d, want 4", turnCount)
 	}
 
 	// Check final state
@@ -310,9 +330,23 @@ func TestRunDebate(t *testing.T) {
 	if final.Status != core.StatusCompleted {
 		t.Errorf("wrong status: got %s, want completed", final.Status)
 	}
-	if len(turns) != 4 {
-		t.Errorf("wrong stored turn count: got %d, want 4", len(turns))
+
+	// Total stored turns includes debate (4) + vote (2) + conclusion (1) = 7
+	if len(turns) != 7 {
+		t.Errorf("wrong stored turn count: got %d, want 7", len(turns))
 	}
+
+	// Verify debate turn count
+	debateTurnCount := 0
+	for _, turn := range turns {
+		if turn.TurnType == core.TurnTypeDebate {
+			debateTurnCount++
+		}
+	}
+	if debateTurnCount != 4 {
+		t.Errorf("wrong debate turn count: got %d, want 4", debateTurnCount)
+	}
+
 	if len(final.Conclusions) == 0 {
 		t.Error("conclusions is empty")
 	}

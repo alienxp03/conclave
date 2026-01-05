@@ -169,6 +169,13 @@ export interface CouncilSynthesis {
   round: number;
   content: string;
   created_at: string;
+  // Metadata fields
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  duration_ms?: number;
+  model?: string;
+  stop_reason?: string;
 }
 
 export interface Council {
@@ -197,6 +204,13 @@ export interface CouncilResponse {
   round: number;
   content: string;
   created_at: string;
+  // Metadata fields
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  duration_ms?: number;
+  model?: string;
+  stop_reason?: string;
 }
 
 export interface CouncilRanking {
@@ -208,4 +222,11 @@ export interface CouncilRanking {
   rankings: string[];
   reasoning: string;
   created_at: string;
+  // Metadata fields
+  input_tokens?: number;
+  output_tokens?: number;
+  total_tokens?: number;
+  duration_ms?: number;
+  model?: string;
+  stop_reason?: string;
 }

@@ -18,8 +18,13 @@ type JSONEvent struct {
 		Text   string `json:"text,omitempty"`
 		Reason string `json:"reason,omitempty"`
 		Tokens *struct {
-			Input  int `json:"input"`
-			Output int `json:"output"`
+			Input     int `json:"input"`
+			Output    int `json:"output"`
+			Reasoning int `json:"reasoning,omitempty"` // Thinking/reasoning tokens
+			Cache     *struct {
+				Read  int `json:"read,omitempty"`
+				Write int `json:"write,omitempty"`
+			} `json:"cache,omitempty"`
 		} `json:"tokens,omitempty"`
 	} `json:"part,omitempty"`
 }

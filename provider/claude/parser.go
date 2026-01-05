@@ -10,6 +10,7 @@ import (
 // JSONResponse represents Claude CLI JSON output.
 type JSONResponse struct {
 	Type    string `json:"type"`
+	Subtype string `json:"subtype,omitempty"`
 	Role    string `json:"role,omitempty"`
 	Model   string `json:"model,omitempty"`
 	Content []struct {
@@ -18,11 +19,16 @@ type JSONResponse struct {
 	} `json:"content,omitempty"`
 	StopReason string `json:"stop_reason,omitempty"`
 	Usage      *struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
 	} `json:"usage,omitempty"`
-	Result    string `json:"result,omitempty"` // For simpler responses
-	SessionID string `json:"session_id,omitempty"`
+	Result      string  `json:"result,omitempty"`    // For simpler responses
+	SessionID   string  `json:"session_id,omitempty"`
+	DurationMs  int64   `json:"duration_ms,omitempty"`  // CLI adds duration at top level
+	NumTurns    int     `json:"num_turns,omitempty"`
+	TotalCostUSD float64 `json:"total_cost_usd,omitempty"`
 }
 
 // ParseJSON parses Claude CLI JSON output.
@@ -54,13 +60,22 @@ func ParseJSON(data string, duration time.Duration) (*provider.Response, error) 
 
 	// Extract metadata
 	if raw.Usage != nil {
+		// Calculate total input including cache tokens
+		totalInputTokens := raw.Usage.InputTokens + raw.Usage.CacheCreationInputTokens + raw.Usage.CacheReadInputTokens
+		
+		// Use CLI's duration_ms if available, otherwise fall back to measured duration
+		actualDuration := duration
+		if raw.DurationMs > 0 {
+			actualDuration = time.Duration(raw.DurationMs) * time.Millisecond
+		}
+		
 		resp.Metadata = &provider.Metadata{
-			InputTokens:  raw.Usage.InputTokens,
+			InputTokens:  totalInputTokens,
 			OutputTokens: raw.Usage.OutputTokens,
-			TotalTokens:  raw.Usage.InputTokens + raw.Usage.OutputTokens,
+			TotalTokens:  totalInputTokens + raw.Usage.OutputTokens,
 			StopReason:   raw.StopReason,
 			SessionID:    raw.SessionID,
-			Duration:     duration,
+			Duration:     actualDuration,
 		}
 	}
 
