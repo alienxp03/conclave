@@ -20,6 +20,24 @@ type Provider interface {
 
 	// Execute sends a request to the provider and returns a structured response.
 	Execute(ctx context.Context, req *Request) (*Response, error)
+
+	// HealthCheck performs a quick health check on the provider.
+	HealthCheck(ctx context.Context) HealthStatus
+}
+
+// HealthStatus represents the health status of a provider.
+type HealthStatus struct {
+	// Available indicates whether the provider is accessible and working.
+	Available bool `json:"available"`
+
+	// ResponseTime is the duration taken to complete the health check.
+	ResponseTime time.Duration `json:"response_time"`
+
+	// Error contains the error message if the health check failed.
+	Error string `json:"error,omitempty"`
+
+	// CheckedAt is the timestamp when the health check was performed.
+	CheckedAt time.Time `json:"checked_at"`
 }
 
 // Request represents a generation request to an AI provider.
@@ -102,4 +120,8 @@ type Config struct {
 	// Timeout is the maximum duration for a request.
 	// Default: 5 minutes.
 	Timeout time.Duration
+
+	// MaxRetries is the maximum number of retries for transient failures.
+	// Default: 2 (total of 3 attempts).
+	MaxRetries int
 }

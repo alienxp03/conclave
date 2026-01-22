@@ -47,6 +47,7 @@ type ProviderConfig struct {
 	DefaultModel string        `yaml:"default_model,omitempty"`
 	Models       []string      `yaml:"models,omitempty"`
 	Timeout      time.Duration `yaml:"timeout,omitempty"`
+	MaxRetries   int           `yaml:"max_retries,omitempty"`
 	Enabled      bool          `yaml:"enabled"`
 }
 
@@ -68,6 +69,7 @@ func Default() *Config {
 			DefaultModel: core.DefaultModelForProvider[name],
 			Models:       core.DefaultModelsForProvider[name],
 			Timeout:      5 * time.Minute,
+			MaxRetries:   2,
 			Enabled:      true,
 		}
 	}
@@ -168,6 +170,7 @@ func (p ProviderConfig) ToProviderConfig(name string) provider.Config {
 		DefaultModel: p.DefaultModel,
 		Models:       p.Models,
 		Timeout:      p.Timeout,
+		MaxRetries:   p.MaxRetries,
 	}
 }
 
@@ -255,6 +258,7 @@ providers:
     default_model: ""       # e.g., "sonnet", "opus", "haiku"
     models: ["opus", "sonnet", "haiku"]
     timeout: 5m
+    max_retries: 2          # Retry failed commands (default: 2, total 3 attempts)
     enabled: true
 
   codex:

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { CreateCouncilRequest, MemberSpec } from '../types';
+import { ProviderHealthDashboard } from '../components/ProviderHealthDashboard';
 
 const EXAMPLE_TOPICS = [
   'How should we regulate AI safety?',
@@ -188,6 +189,8 @@ export function NewCouncil() {
               </div>
             </div>
           )}
+
+          <ProviderHealthDashboard />
 
           <div>
             <textarea

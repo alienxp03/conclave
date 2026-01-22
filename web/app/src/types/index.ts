@@ -26,6 +26,9 @@ export interface Turn {
   duration_ms?: number;
   model?: string;
   stop_reason?: string;
+  // Failure tracking
+  status?: string;
+  error?: string;
 }
 
 export interface DebateStats {
@@ -86,6 +89,9 @@ export interface Debate {
   created_at: string;
   updated_at: string;
   completed_at?: string;
+  // Failure tracking
+  failed_turns?: number;
+  completed_turns?: number;
 }
 
 export interface DebateSummary {
