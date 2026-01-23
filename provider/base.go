@@ -3,9 +3,11 @@ package provider
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os/exec"
 	"strings"
 	"time"
@@ -29,6 +31,7 @@ type BaseProvider struct {
 	defaultModel string
 	models       []string
 	timeout      time.Duration
+	maxRetries   int
 }
 
 // NewBaseProvider creates a new base provider from configuration.
@@ -43,6 +46,11 @@ func NewBaseProvider(cfg Config) BaseProvider {
 		displayName = cfg.Name
 	}
 
+	maxRetries := cfg.MaxRetries
+	if maxRetries < 0 {
+		maxRetries = 2 // Default: 2 retries (3 total attempts)
+	}
+
 	return BaseProvider{
 		name:         cfg.Name,
 		displayName:  displayName,
@@ -51,6 +59,7 @@ func NewBaseProvider(cfg Config) BaseProvider {
 		defaultModel: cfg.DefaultModel,
 		models:       cfg.Models,
 		timeout:      timeout,
+		maxRetries:   maxRetries,
 	}
 }
 
@@ -134,8 +143,8 @@ func (l *limitedWriter) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
-// ExecuteCommand runs the CLI command with the given arguments.
-func (p *BaseProvider) ExecuteCommand(ctx context.Context, req *Request) (string, error) {
+// executeOnce runs the CLI command with the given arguments (single attempt).
+func (p *BaseProvider) executeOnce(ctx context.Context, req *Request) (string, error) {
 	// Validate executable before running
 	if err := p.ValidateExecutable(); err != nil {
 		return "", err
@@ -212,4 +221,130 @@ func (p *BaseProvider) ExecuteCommand(ctx context.Context, req *Request) (string
 	}
 
 	return result, nil
+}
+
+// ExecuteCommand runs the CLI command with retry logic for transient failures.
+func (p *BaseProvider) ExecuteCommand(ctx context.Context, req *Request) (string, error) {
+	maxRetries := p.maxRetries
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Apply exponential backoff for retries
+		if attempt > 0 {
+			backoff := time.Duration(math.Pow(2, float64(attempt))) * time.Second
+			slog.Info("Retrying command after backoff",
+				"provider", p.name,
+				"attempt", attempt+1,
+				"max_attempts", maxRetries+1,
+				"backoff", backoff,
+			)
+
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		}
+
+		result, err := p.executeOnce(ctx, req)
+
+		// Success - return immediately
+		if err == nil {
+			if attempt > 0 {
+				slog.Info("Command succeeded after retry",
+					"provider", p.name,
+					"attempt", attempt+1,
+				)
+			}
+			return result, nil
+		}
+
+		// Check if error is retriable
+		if !isRetriable(err) {
+			slog.Debug("Error is not retriable, failing immediately",
+				"provider", p.name,
+				"error", err,
+			)
+			return "", err
+		}
+
+		// Last attempt failed
+		if attempt == maxRetries {
+			slog.Error("Command failed after all retries",
+				"provider", p.name,
+				"attempts", attempt+1,
+				"error", err,
+			)
+			return "", fmt.Errorf("failed after %d attempts: %w", attempt+1, err)
+		}
+
+		slog.Warn("Command failed, will retry",
+			"provider", p.name,
+			"attempt", attempt+1,
+			"max_attempts", maxRetries+1,
+			"error", err,
+		)
+	}
+
+	return "", fmt.Errorf("unexpected retry loop exit")
+}
+
+// HealthCheck performs a quick health check on the provider.
+func (p *BaseProvider) HealthCheck(ctx context.Context) HealthStatus {
+	start := time.Now()
+
+	// 10 second timeout for health check
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req := &Request{
+		Prompt: "Reply only with the answer. 1+1",
+		Model:  p.defaultModel,
+	}
+
+	// Use executeOnce directly - no retries for health checks
+	_, err := p.executeOnce(ctx, req)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		return HealthStatus{
+			Available:    false,
+			ResponseTime: elapsed,
+			Error:        err.Error(),
+			CheckedAt:    time.Now(),
+		}
+	}
+
+	return HealthStatus{
+		Available:    true,
+		ResponseTime: elapsed,
+		CheckedAt:    time.Now(),
+	}
+}
+
+// isRetriable checks if an error is worth retrying.
+func isRetriable(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Retry on timeout errors
+	if err == context.DeadlineExceeded {
+		return true
+	}
+
+	// Check for CLIError
+	var cliErr *CLIError
+	if errors, ok := err.(*CLIError); ok {
+		cliErr = errors
+	} else {
+		return false
+	}
+
+	// Check error message for retriable conditions
+	msg := strings.ToLower(cliErr.Message)
+	return strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "connection") ||
+		strings.Contains(msg, "network") ||
+		strings.Contains(msg, "temporary") ||
+		strings.Contains(msg, "unavailable")
 }

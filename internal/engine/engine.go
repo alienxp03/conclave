@@ -361,10 +361,50 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 
 		turn, err := e.executeTurn(ctx, debate, currentAgent, turnNum, isLastTurn)
 		if err != nil {
-			debate.Status = core.StatusFailed
-			e.storage.UpdateDebate(debate)
-			return fmt.Errorf("failed to execute turn %d: %w", turnNum, err)
+			// Create failed turn record
+			failedTurn := &core.Turn{
+				ID:        core.GenerateID(),
+				DebateID:  debate.ID,
+				AgentID:   currentAgent.ID,
+				Number:    turnNum,
+				Round:     currentRound,
+				Content:   "",
+				CreatedAt: time.Now(),
+				Status:    "failed",
+				Error:     err.Error(),
+			}
+
+			// Save failed turn to storage
+			if saveErr := e.storage.AddTurn(failedTurn); saveErr != nil {
+				slog.Error("Failed to save failed turn", "error", saveErr)
+			}
+
+			// Update failure counter
+			debate.FailedTurns++
+
+			// Log error but continue debate
+			slog.Warn("Turn execution failed, continuing debate",
+				"turn", turnNum,
+				"agent", currentAgent.Name,
+				"provider", currentAgent.Provider,
+				"error", err,
+			)
+
+			// Update turns list with failed turn
+			turns = append(turns, failedTurn)
+
+			// Notify callback of failure
+			if callback != nil {
+				callback(failedTurn, debate)
+			}
+
+			// Continue to next turn
+			continue
 		}
+
+		// Turn succeeded
+		turn.Status = "completed"
+		debate.CompletedTurns++
 
 		// Update turns list for next iteration
 		turns = append(turns, turn)
@@ -407,10 +447,26 @@ func (e *Engine) RunDebate(ctx context.Context, debateID string, callback TurnCa
 
 	debate.Conclusions = append(debate.Conclusions, conclusion)
 
-	// Mark as completed
+	// Determine final status based on turn results
 	now := time.Now()
-	debate.Status = core.StatusCompleted
-	debate.CompletedAt = &now
+	if debate.CompletedTurns == 0 {
+		// All turns failed - mark as failed
+		debate.Status = core.StatusFailed
+		slog.Error("Debate failed: all turns failed", "debate_id", debate.ID)
+	} else {
+		// At least some turns succeeded - mark as completed
+		debate.Status = core.StatusCompleted
+		debate.CompletedAt = &now
+
+		if debate.FailedTurns > 0 {
+			slog.Warn("Debate completed with partial failures",
+				"debate_id", debate.ID,
+				"completed_turns", debate.CompletedTurns,
+				"failed_turns", debate.FailedTurns,
+			)
+		}
+	}
+
 	if err := e.storage.UpdateDebate(debate); err != nil {
 		return fmt.Errorf("failed to update debate: %w", err)
 	}
@@ -554,6 +610,7 @@ func (e *Engine) executeTurn(ctx context.Context, debate *core.Debate, agent cor
 		CreatedAt: time.Now(),
 		TurnType:  core.TurnTypeDebate,
 		Model:     model,
+		Status:    "completed",
 	}
 
 	// Copy metadata from response

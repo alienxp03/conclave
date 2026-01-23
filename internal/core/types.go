@@ -35,6 +35,9 @@ type Debate struct {
 	CreatedAt           time.Time     `json:"created_at"`
 	UpdatedAt           time.Time     `json:"updated_at"`
 	CompletedAt         *time.Time    `json:"completed_at,omitempty"`
+	// Failure tracking
+	FailedTurns    int `json:"failed_turns,omitempty"`    // Count of failed turns
+	CompletedTurns int `json:"completed_turns,omitempty"` // Count of successfully completed turns
 }
 
 // Agent represents an AI agent participating in a debate.
@@ -75,6 +78,10 @@ type Turn struct {
 	DurationMs   int64    `json:"duration_ms,omitempty"`   // Duration in milliseconds from provider
 	Model        string   `json:"model,omitempty"`         // Model used for this turn
 	StopReason   string   `json:"stop_reason,omitempty"`   // Stop reason from provider
+
+	// Failure tracking
+	Status string `json:"status,omitempty"` // "completed", "failed"
+	Error  string `json:"error,omitempty"`  // Error message if turn failed
 }
 
 // DebateStats contains aggregated usage statistics for a debate.

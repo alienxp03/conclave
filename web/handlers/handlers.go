@@ -94,6 +94,7 @@ func New(store storage.Storage, registry *provider.Registry, workspaces *workspa
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// API routes (must be registered first for proper routing)
 	mux.HandleFunc("GET /api/providers", h.handleAPIProviders)
+	mux.HandleFunc("GET /api/providers/health", h.handleAPIProvidersHealth)
 	mux.HandleFunc("GET /api/debates", h.handleAPIDebates)
 	mux.HandleFunc("GET /api/debates/{id}", h.handleAPIDebate)
 	mux.HandleFunc("GET /api/debates/{id}/stream", h.handleDebateStream)
@@ -445,6 +446,32 @@ func (h *Handler) handleAPIProviders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.json(w, result)
+}
+
+func (h *Handler) handleAPIProvidersHealth(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	providers := h.registry.List()
+	result := make(map[string]interface{})
+
+	for _, p := range providers {
+		if p.Name() == "mock" {
+			continue
+		}
+
+		// Run health check
+		status := p.HealthCheck(ctx)
+
+		result[p.Name()] = map[string]interface{}{
+			"available":     status.Available,
+			"response_time": status.ResponseTime.Seconds(),
+			"error":         status.Error,
+			"checked_at":    status.CheckedAt,
+		}
+	}
+
+	h.json(w, map[string]interface{}{
+		"providers": result,
+	})
 }
 
 func (h *Handler) handleAPIDebates(w http.ResponseWriter, r *http.Request) {

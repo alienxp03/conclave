@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { CreateDebateRequest } from '../types';
+import { ProviderHealthDashboard } from '../components/ProviderHealthDashboard';
 
 const EXAMPLE_TOPICS = [
   'Is social media more harmful than beneficial?',
@@ -201,6 +202,8 @@ export function NewDebate() {
               </div>
             </div>
           )}
+
+          <ProviderHealthDashboard />
 
           <div>
             <textarea
