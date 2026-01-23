@@ -17,6 +17,7 @@ type Provider interface {
 	Name() string
 	Available() bool
 	Execute(ctx context.Context, req *provider.Request) (*provider.Response, error)
+	HealthCheck(ctx context.Context) provider.HealthStatus
 
 	// Legacy methods for backward compatibility
 	DisplayName() string
@@ -102,6 +103,11 @@ func (a *Adapter) Timeout() time.Duration {
 		return bp.Timeout()
 	}
 	return provider.DefaultTimeout
+}
+
+// HealthCheck proxies the provider health check.
+func (a *Adapter) HealthCheck(ctx context.Context) provider.HealthStatus {
+	return a.Provider.HealthCheck(ctx)
 }
 
 // Registry wraps provider.Registry with backward-compatible adapters.

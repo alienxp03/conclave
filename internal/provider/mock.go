@@ -83,6 +83,15 @@ func (p *MockProvider) Execute(ctx context.Context, req *provider.Request) (*pro
 	}, nil
 }
 
+// HealthCheck always succeeds for mock provider.
+func (p *MockProvider) HealthCheck(ctx context.Context) provider.HealthStatus {
+	return provider.HealthStatus{
+		Available:    true,
+		ResponseTime: 0,
+		CheckedAt:    time.Now(),
+	}
+}
+
 func truncate(s string, max int) string {
 	if len(s) > max {
 		return s[:max]

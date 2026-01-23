@@ -127,9 +127,9 @@ var DefaultArgsForProvider = map[string][]string{
 
 // DefaultModelsForProvider returns the list of supported models for a provider.
 var DefaultModelsForProvider = map[string][]string{
-	"claude":   {"opus-4.5", "sonnet-4.5", "haiku-4.5"},
+	"claude":   {"claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5"},
 	"gemini":   {"gemini-3-pro-preview", "gemini-3-flash-preview"},
-	"qwen":     {"qwen-3-coder-plus"},
+	"qwen":     {"qwen3-coder-plus-2025-09-23"},
 	"codex":    {"gpt-5.2-codex", "gpt-5.2"},
 	"opencode": {"zai-coding-plan/glm-4.7", "google/gemini-3-pro-preview", "google/gemini-3-flash-preview"},
 	"mock":     {"mock-v1", "mock-v2"},
@@ -137,9 +137,9 @@ var DefaultModelsForProvider = map[string][]string{
 
 // DefaultModelForProvider returns the default model for a provider.
 var DefaultModelForProvider = map[string]string{
-	"claude":   "sonnet-4.5",
+	"claude":   "claude-sonnet-4-5",
 	"gemini":   "gemini-3-flash-preview",
-	"qwen":     "qwen-3-coder-plus",
+	"qwen":     "qwen3-coder-plus-2025-09-23",
 	"codex":    "gpt-5.2-codex",
 	"opencode": "zai-coding-plan/glm-4.7",
 	"mock":     "mock-v1",
@@ -148,9 +148,9 @@ var DefaultModelForProvider = map[string]string{
 // BestModelForProvider returns the best (most capable) model for a provider.
 // Used for chairman selection.
 var BestModelForProvider = map[string]string{
-	"claude":   "opus",
-	"gemini":   "pro",
-	"qwen":     "max",
+	"claude":   "claude-opus-4-5",
+	"gemini":   "gemini-3-pro-preview",
+	"qwen":     "qwen3-coder-plus-2025-09-23",
 	"codex":    "gpt-5.2-codex",
 	"opencode": "zai-coding-plan/glm-4.7",
 	"mock":     "mock-v1",

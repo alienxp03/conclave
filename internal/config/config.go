@@ -255,8 +255,8 @@ providers:
   claude:
     command: claude
     args: ["--print"]
-    default_model: ""       # e.g., "sonnet", "opus", "haiku"
-    models: ["opus", "sonnet", "haiku"]
+    default_model: ""       # e.g., "claude-sonnet-4-5", "claude-opus-4-5", "claude-haiku-4-5"
+    models: ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5"]
     timeout: 5m
     max_retries: 2          # Retry failed commands (default: 2, total 3 attempts)
     enabled: true
@@ -281,7 +281,7 @@ providers:
     command: qwen
     args: []
     default_model: ""
-    models: ["qwen-turbo", "qwen-plus", "qwen-max"]
+    models: ["qwen3-coder-plus-2025-09-23"]
     timeout: 5m
     enabled: true
 

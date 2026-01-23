@@ -35,6 +35,14 @@ func (m *MockProvider) Execute(ctx context.Context, req *extprovider.Request) (*
 	}, nil
 }
 
+func (m *MockProvider) HealthCheck(ctx context.Context) extprovider.HealthStatus {
+	return extprovider.HealthStatus{
+		Available:    m.available,
+		ResponseTime: 0,
+		CheckedAt:    time.Now(),
+	}
+}
+
 // Legacy methods for backward compatibility with internal/provider.Provider
 func (m *MockProvider) DisplayName() string { return m.name }
 func (m *MockProvider) Generate(ctx context.Context, prompt string) (string, error) {

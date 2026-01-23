@@ -167,7 +167,9 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
         {allItems.map((item) => {
           const isActive = location.pathname.includes(item.id);
           const projectName = item.project_id ? projectNameById.get(item.project_id) : undefined;
-          const projectLabel = projectName || (item.project_id ? 'Unknown project' : 'No project');
+          const projectLabel = projectName || (item.project_id ? 'Unknown project' : undefined);
+          const itemTitle = item.title || item.topic || 'New conversation';
+          const itemTooltip = projectLabel ? `${itemTitle} • ${projectLabel}` : itemTitle;
           return (
             <Link
               key={item.id}
@@ -179,7 +181,7 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
                   ? 'bg-brand-primary text-[#2b3339] shadow-lg font-bold'
                   : 'text-[#9da9a0] hover:text-[#d3c6aa] hover:bg-brand-bg'
               }`}
-              title={`${item.title || item.topic || 'New conversation'} • ${projectLabel}`}
+              title={itemTooltip}
             >
               {isCollapsed ? (
                 <div className="flex justify-center">
@@ -189,10 +191,12 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
                 </div>
               ) : (
                 <div className="flex flex-col gap-1">
-                  <div className="text-sm font-medium">{item.title || 'New conversation'}</div>
-                  <div className={`text-[11px] ${isActive ? 'text-[#2b3339]/80' : 'text-[#728072]'}`}>
-                    {projectLabel}
-                  </div>
+                  <div className="text-sm font-medium">{itemTitle}</div>
+                  {projectLabel && (
+                    <div className={`text-[11px] ${isActive ? 'text-[#2b3339]/80' : 'text-[#728072]'}`}>
+                      {projectLabel}
+                    </div>
+                  )}
                 </div>
               )}
             </Link>

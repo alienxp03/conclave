@@ -3,7 +3,6 @@ package provider
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -297,7 +296,7 @@ func (p *BaseProvider) HealthCheck(ctx context.Context) HealthStatus {
 	defer cancel()
 
 	req := &Request{
-		Prompt: "Reply only with the answer. 1+1",
+		Prompt: HealthCheckPrompt,
 		Model:  p.defaultModel,
 	}
 
@@ -333,10 +332,8 @@ func isRetriable(err error) bool {
 	}
 
 	// Check for CLIError
-	var cliErr *CLIError
-	if errors, ok := err.(*CLIError); ok {
-		cliErr = errors
-	} else {
+	cliErr, ok := err.(*CLIError)
+	if !ok {
 		return false
 	}
 

@@ -119,6 +119,6 @@ describe('Navigation', () => {
     const debateTwoTitle = await screen.findByText('Debate Two');
     const debateTwoLink = debateTwoTitle.closest('a');
     expect(debateTwoLink).not.toBeNull();
-    expect(within(debateTwoLink as HTMLElement).getByText('No project')).toBeInTheDocument();
+    expect(within(debateTwoLink as HTMLElement).queryByText('No project')).toBeNull();
   });
 });

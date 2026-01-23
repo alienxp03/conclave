@@ -23,6 +23,7 @@ import (
 	"github.com/alienxp03/conclave/internal/storage"
 	"github.com/alienxp03/conclave/internal/style"
 	"github.com/alienxp03/conclave/internal/workspace"
+	baseprovider "github.com/alienxp03/conclave/provider"
 )
 
 //go:embed templates/*.html
@@ -36,6 +37,7 @@ type Handler struct {
 	storage       storage.Storage
 	templates     *template.Template
 	workspaces    *workspace.Manager
+	healthCache   *providerHealthCache
 }
 
 // New creates a new Handler.
@@ -87,6 +89,7 @@ func New(store storage.Storage, registry *provider.Registry, workspaces *workspa
 		storage:       store,
 		templates:     tmpl,
 		workspaces:    workspaces,
+		healthCache:   newProviderHealthCache(defaultProviderHealthCachePath(), providerHealthCacheTTL),
 	}
 }
 
@@ -94,6 +97,7 @@ func New(store storage.Storage, registry *provider.Registry, workspaces *workspa
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// API routes (must be registered first for proper routing)
 	mux.HandleFunc("GET /api/providers", h.handleAPIProviders)
+	mux.HandleFunc("GET /api/providers/health/{name}", h.handleAPIProviderHealth)
 	mux.HandleFunc("GET /api/providers/health", h.handleAPIProvidersHealth)
 	mux.HandleFunc("GET /api/debates", h.handleAPIDebates)
 	mux.HandleFunc("GET /api/debates/{id}", h.handleAPIDebate)
@@ -448,18 +452,47 @@ func (h *Handler) handleAPIProviders(w http.ResponseWriter, r *http.Request) {
 	h.json(w, result)
 }
 
+func (h *Handler) handleAPIProviderHealth(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		h.jsonError(w, "provider name required", http.StatusBadRequest)
+		return
+	}
+
+	p, err := h.registry.Get(name)
+	if err != nil {
+		h.jsonError(w, "provider not found", http.StatusNotFound)
+		return
+	}
+
+	if p.Name() == "mock" {
+		h.jsonError(w, "provider not available", http.StatusNotFound)
+		return
+	}
+
+	force := r.URL.Query().Get("force") == "1"
+	status := h.getProviderHealth(r.Context(), p, force)
+	h.json(w, map[string]interface{}{
+		"name":          p.Name(),
+		"available":     status.Available,
+		"response_time": status.ResponseTime.Seconds(),
+		"error":         status.Error,
+		"checked_at":    status.CheckedAt,
+	})
+}
+
 func (h *Handler) handleAPIProvidersHealth(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	providers := h.registry.List()
 	result := make(map[string]interface{})
+	force := r.URL.Query().Get("force") == "1"
 
 	for _, p := range providers {
 		if p.Name() == "mock" {
 			continue
 		}
 
-		// Run health check
-		status := p.HealthCheck(ctx)
+		status := h.getProviderHealth(ctx, p, force)
 
 		result[p.Name()] = map[string]interface{}{
 			"available":     status.Available,
@@ -472,6 +505,20 @@ func (h *Handler) handleAPIProvidersHealth(w http.ResponseWriter, r *http.Reques
 	h.json(w, map[string]interface{}{
 		"providers": result,
 	})
+}
+
+func (h *Handler) getProviderHealth(ctx context.Context, p provider.Provider, force bool) baseprovider.HealthStatus {
+	if h.healthCache != nil && !force {
+		if status, ok := h.healthCache.GetFresh(p.Name()); ok {
+			return status
+		}
+	}
+
+	status := p.HealthCheck(ctx)
+	if h.healthCache != nil {
+		h.healthCache.Set(p.Name(), status)
+	}
+	return status
 }
 
 func (h *Handler) handleAPIDebates(w http.ResponseWriter, r *http.Request) {

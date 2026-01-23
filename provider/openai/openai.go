@@ -76,3 +76,8 @@ func (p *Provider) Execute(ctx context.Context, req *provider.Request) (*provide
 
 	return resp, nil
 }
+
+// HealthCheck performs a quick health check using the provider execution path.
+func (p *Provider) HealthCheck(ctx context.Context) provider.HealthStatus {
+	return provider.HealthCheckWithExecute(ctx, p.DefaultModel(), p.Execute)
+}
