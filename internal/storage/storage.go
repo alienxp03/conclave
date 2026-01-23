@@ -20,6 +20,7 @@ type Storage interface {
 	UpdateDebateTitle(id, title string) error
 	DeleteDebate(id string) error
 	ListDebates(limit, offset int) ([]*core.DebateSummary, error)
+	ListDebatesByProject(projectID string, limit, offset int) ([]*core.DebateSummary, error)
 
 	// Turn operations
 	AddTurn(turn *core.Turn) error
@@ -41,6 +42,7 @@ type Storage interface {
 	UpdateCouncilTitle(id, title string) error
 	DeleteCouncil(id string) error
 	ListCouncils(limit, offset int) ([]*core.CouncilSummary, error)
+	ListCouncilsByProject(projectID string, limit, offset int) ([]*core.CouncilSummary, error)
 
 	// Response operations
 	AddResponse(response *core.Response) error
@@ -49,4 +51,11 @@ type Storage interface {
 	// Ranking operations
 	AddRanking(ranking *core.Ranking) error
 	GetRankings(councilID string) ([]*core.Ranking, error)
+
+	// Project operations
+	CreateProject(project *core.Project) error
+	GetProject(id string) (*core.Project, error)
+	UpdateProject(project *core.Project) error
+	DeleteProject(id string) error
+	ListProjects(limit, offset int) ([]*core.Project, error)
 }

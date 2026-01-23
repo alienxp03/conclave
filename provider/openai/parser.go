@@ -29,18 +29,30 @@ type JSONResponse struct {
 // JSONEvent represents a streaming event from Codex CLI --json output.
 type JSONEvent struct {
 	Type      string `json:"type"`
+	ThreadID  string `json:"thread_id,omitempty"`
 	SessionID string `json:"session_id,omitempty"`
-	// Message event fields
+	// Message event fields (legacy schema)
 	Message *struct {
 		Role    string `json:"role,omitempty"`
 		Content string `json:"content,omitempty"`
 	} `json:"message,omitempty"`
+	// Item event fields (current Codex JSONL schema)
+	Item *struct {
+		ID      string `json:"id,omitempty"`
+		Type    string `json:"type,omitempty"`
+		Text    string `json:"text,omitempty"`
+		Content string `json:"content,omitempty"`
+		Role    string `json:"role,omitempty"`
+	} `json:"item,omitempty"`
 	// Completion/finish event fields
 	Usage *struct {
-		PromptTokens     int   `json:"prompt_tokens"`
-		CompletionTokens int   `json:"completion_tokens"`
-		TotalTokens      int   `json:"total_tokens"`
+		PromptTokens     int   `json:"prompt_tokens,omitempty"`
+		CompletionTokens int   `json:"completion_tokens,omitempty"`
+		TotalTokens      int   `json:"total_tokens,omitempty"`
 		DurationMs       int64 `json:"duration_ms,omitempty"`
+		InputTokens      int   `json:"input_tokens,omitempty"`
+		OutputTokens     int   `json:"output_tokens,omitempty"`
+		CachedInput      int   `json:"cached_input_tokens,omitempty"`
 	} `json:"usage,omitempty"`
 	StopReason string `json:"stop_reason,omitempty"`
 	// Text content for streaming
@@ -72,6 +84,17 @@ func ParseJSON(data string, duration time.Duration) (*provider.Response, error) 
 		if event.Message != nil && event.Message.Content != "" {
 			resp.Content += event.Message.Content
 		}
+		if event.Item != nil {
+			if event.Item.Role == "assistant" ||
+				event.Item.Type == "agent_message" ||
+				event.Item.Type == "assistant_message" {
+				if event.Item.Text != "" {
+					resp.Content += event.Item.Text
+				} else if event.Item.Content != "" {
+					resp.Content += event.Item.Content
+				}
+			}
+		}
 		if event.Text != "" {
 			resp.Content += event.Text
 		}
@@ -81,9 +104,22 @@ func ParseJSON(data string, duration time.Duration) (*provider.Response, error) 
 			if resp.Metadata == nil {
 				resp.Metadata = &provider.Metadata{}
 			}
-			resp.Metadata.InputTokens = event.Usage.PromptTokens
-			resp.Metadata.OutputTokens = event.Usage.CompletionTokens
-			resp.Metadata.TotalTokens = event.Usage.TotalTokens
+			inputTokens := event.Usage.PromptTokens
+			if inputTokens == 0 {
+				inputTokens = event.Usage.InputTokens
+			}
+			outputTokens := event.Usage.CompletionTokens
+			if outputTokens == 0 {
+				outputTokens = event.Usage.OutputTokens
+			}
+			totalTokens := event.Usage.TotalTokens
+			if totalTokens == 0 && inputTokens > 0 && outputTokens > 0 {
+				totalTokens = inputTokens + outputTokens
+			}
+
+			resp.Metadata.InputTokens = inputTokens
+			resp.Metadata.OutputTokens = outputTokens
+			resp.Metadata.TotalTokens = totalTokens
 			if event.Usage.DurationMs > 0 {
 				resp.Metadata.Duration = time.Duration(event.Usage.DurationMs) * time.Millisecond
 			}
@@ -99,6 +135,14 @@ func ParseJSON(data string, duration time.Duration) (*provider.Response, error) 
 				resp.Metadata = &provider.Metadata{}
 			}
 			resp.Metadata.SessionID = event.SessionID
+		}
+		if event.ThreadID != "" {
+			if resp.Metadata == nil {
+				resp.Metadata = &provider.Metadata{}
+			}
+			if resp.Metadata.SessionID == "" {
+				resp.Metadata.SessionID = event.ThreadID
+			}
 		}
 	}
 

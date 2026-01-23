@@ -72,7 +72,7 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 
 		agents[i] = core.Agent{
 			ID:         memberIDs[i],
-			Name:       fmt.Sprintf("%s (%s)", member.Provider, personaDef.Name),
+			Name:       fmt.Sprintf("%s (%s) • %s", member.Provider, personaDef.Name, member.Model),
 			MaskedName: maskedNames[memberIDs[i]],
 			Provider:   member.Provider,
 			Model:      member.Model,
@@ -95,7 +95,7 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 
 		chairman = core.Agent{
 			ID:         core.GenerateID(),
-			Name:       fmt.Sprintf("Chairman (%s)", chairmanSpec.Provider),
+			Name:       fmt.Sprintf("Chairman (%s) • %s", chairmanSpec.Provider, chairmanSpec.Model),
 			MaskedName: "Chairman", // Special masked name for chairman
 			Provider:   chairmanSpec.Provider,
 			Model:      chairmanSpec.Model,
@@ -106,7 +106,7 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 		defaultChairman := core.GetDefaultChairman(members)
 		chairman = core.Agent{
 			ID:         core.GenerateID(),
-			Name:       fmt.Sprintf("Chairman (%s)", defaultChairman.Provider),
+			Name:       fmt.Sprintf("Chairman (%s) • %s", defaultChairman.Provider, defaultChairman.Model),
 			MaskedName: "Chairman", // Special masked name for chairman
 			Provider:   defaultChairman.Provider,
 			Model:      defaultChairman.Model,
@@ -117,15 +117,28 @@ func (e *Engine) CreateCouncil(ctx context.Context, config core.NewCouncilConfig
 	// Create council
 	now := time.Now()
 	cwd, _ := os.Getwd()
+	var projectInstructions string
+	if config.ProjectID != "" {
+		project, err := e.storage.GetProject(config.ProjectID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load project: %w", err)
+		}
+		if project == nil {
+			return nil, fmt.Errorf("project not found")
+		}
+		projectInstructions = project.Instructions
+	}
 	council := &core.Council{
-		ID:        core.GenerateID(),
-		Topic:     config.Topic,
-		CWD:       cwd,
-		Members:   agents,
-		Chairman:  chairman,
-		Status:    core.StatusPending,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:                  core.GenerateID(),
+		Topic:               config.Topic,
+		CWD:                 cwd,
+		ProjectID:           config.ProjectID,
+		ProjectInstructions: projectInstructions,
+		Members:             agents,
+		Chairman:            chairman,
+		Status:              core.StatusPending,
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 
 	// Save to storage
@@ -594,10 +607,12 @@ func (e *Engine) buildResponsePromptWithHistory(council *core.Council, agent cor
 		}
 	}
 
-	prompt := fmt.Sprintf(`%s
-
-Topic: %s
-%s`, personaDef.SystemPrompt, council.Topic, historyText.String())
+	sections := []string{personaDef.SystemPrompt}
+	if instructions := formatProjectInstructions(council.ProjectInstructions); instructions != "" {
+		sections = append(sections, instructions)
+	}
+	sections = append(sections, fmt.Sprintf("Topic: %s\n%s", council.Topic, historyText.String()))
+	prompt := strings.Join(sections, "\n\n")
 
 	if directive != "" {
 		prompt += fmt.Sprintf("\nFollow up question by user: \"%s\"\n\nPlease answer the question given by the user, taking into account the Chairman's previous conclusion.", directive)
@@ -702,10 +717,15 @@ func (e *Engine) buildRankingPrompt(council *core.Council, formattedResponses st
 		contextText.WriteString(fmt.Sprintf("\nFollow up question by user: \"%s\"\n", directive))
 	}
 
+	instructionBlock := ""
+	if instructions := formatProjectInstructions(council.ProjectInstructions); instructions != "" {
+		instructionBlock = "\n" + instructions
+	}
+
 	return fmt.Sprintf(`You are evaluating multiple responses to the following topic:
 
 Topic: %s
-%s
+%s%s
 Here are the responses from different perspectives:
 
 %s
@@ -724,7 +744,7 @@ FINAL RANKING:
 
 Your evaluation:
 
-Use Markdown format.`, council.Topic, contextText.String(), formattedResponses)
+Use Markdown format.`, council.Topic, instructionBlock, contextText.String(), formattedResponses)
 }
 
 func (e *Engine) buildSynthesisPrompt(council *core.Council, responses []core.Response, aggregateRanks []core.AggregateRanking) string {
@@ -758,10 +778,15 @@ func (e *Engine) buildSynthesisPrompt(council *core.Council, responses []core.Re
 		contextText.WriteString(fmt.Sprintf("\nYour Previous Conclusion:\n%s\n", latestSynthesis.Content))
 	}
 
+	instructionBlock := ""
+	if instructions := formatProjectInstructions(council.ProjectInstructions); instructions != "" {
+		instructionBlock = "\n" + instructions
+	}
+
 	return fmt.Sprintf(`You are the Chairman synthesizing a council discussion.
 
 Topic: %s
-%s
+%s%s
 Individual Responses:
 %s
 
@@ -771,7 +796,15 @@ Your task as Chairman is to synthesize all of this information into a single, co
 - The individual responses and their insights
 - The peer rankings and what they reveal about response quality
 - Any patterns of agreement or disagreement
-`, council.Topic, contextText.String(), responsesText.String(), rankingsText.String())
+`, council.Topic, instructionBlock, contextText.String(), responsesText.String(), rankingsText.String())
+}
+
+func formatProjectInstructions(instructions string) string {
+	trimmed := strings.TrimSpace(instructions)
+	if trimmed == "" {
+		return ""
+	}
+	return fmt.Sprintf("Project instructions:\n%s", trimmed)
 }
 
 func (e *Engine) formatResponsesForRanking(responses []core.Response, members []core.Agent) string {

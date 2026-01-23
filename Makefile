@@ -55,6 +55,7 @@ clean: ## Clean build artifacts
 
 build-frontend: ## Build React frontend
 	@echo "Building React frontend..."
+	@cd $(WEB_DIR) && npm ls --silent >/dev/null 2>&1 || npm ci
 	@cd $(WEB_DIR) && npm run build
 	@echo "Frontend built successfully"
 

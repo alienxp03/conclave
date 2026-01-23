@@ -1,4 +1,4 @@
-import type { Debate, Provider, CreateDebateRequest, Turn, Persona, Style, Council, CouncilResponse, CouncilRanking, CreateCouncilRequest, CouncilSummary, SystemInfo, DebateStats } from '../types';
+import type { Debate, Provider, CreateDebateRequest, Turn, Persona, Style, Council, CouncilResponse, CouncilRanking, CreateCouncilRequest, CouncilSummary, SystemInfo, DebateStats, Project, DebateSummary } from '../types';
 
 const API_BASE = '/api';
 
@@ -37,6 +37,59 @@ class ApiClient {
     const response = await fetch(`${API_BASE}/debates/${id}`);
     if (!response.ok) throw new Error('Failed to fetch debate');
     return response.json();
+  }
+
+  async getProjects(limit = 20, offset = 0): Promise<Project[]> {
+    const response = await fetch(`${API_BASE}/projects?limit=${limit}&offset=${offset}`);
+    if (!response.ok) throw new Error('Failed to fetch projects');
+    return response.json();
+  }
+
+  async getProject(id: string): Promise<{ project: Project; debates: DebateSummary[]; councils: CouncilSummary[] }> {
+    const response = await fetch(`${API_BASE}/projects/${id}`);
+    if (!response.ok) throw new Error('Failed to fetch project');
+    return response.json();
+  }
+
+  async createProject(request: { name: string; description: string; instructions: string }): Promise<Project> {
+    const response = await fetch(`${API_BASE}/projects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to create project');
+    }
+
+    return response.json();
+  }
+
+  async updateProject(id: string, request: { name: string; description: string; instructions: string }): Promise<Project> {
+    const response = await fetch(`${API_BASE}/projects/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(request),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to update project');
+    }
+
+    return response.json();
+  }
+
+  async deleteProject(id: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/projects/${id}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete project');
   }
 
   async createDebate(request: CreateDebateRequest): Promise<Debate> {

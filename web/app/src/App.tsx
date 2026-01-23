@@ -6,6 +6,8 @@ import { NewCouncil } from './pages/NewCouncil';
 import { CouncilView } from './pages/CouncilView';
 import { DebateView } from './pages/DebateView';
 import { History } from './pages/History';
+import { Projects } from './pages/Projects';
+import { ProjectDetail } from './pages/ProjectDetail';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,6 +60,8 @@ function App() {
                   <Route path="/councils/:id" element={<CouncilView />} />
                   <Route path="/debates/:id" element={<DebateView />} />
                   <Route path="/history" element={<History />} />
+                  <Route path="/projects" element={<Projects />} />
+                  <Route path="/projects/:id" element={<ProjectDetail />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
               </div>

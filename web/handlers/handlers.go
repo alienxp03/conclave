@@ -97,6 +97,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/debates", h.handleAPIDebates)
 	mux.HandleFunc("GET /api/debates/{id}", h.handleAPIDebate)
 	mux.HandleFunc("GET /api/debates/{id}/stream", h.handleDebateStream)
+	mux.HandleFunc("GET /api/projects", h.handleAPIListProjects)
+	mux.HandleFunc("POST /api/projects", h.handleAPICreateProject)
+	mux.HandleFunc("GET /api/projects/{id}", h.handleAPIGetProject)
+	mux.HandleFunc("PUT /api/projects/{id}", h.handleAPIUpdateProject)
+	mux.HandleFunc("DELETE /api/projects/{id}", h.handleAPIDeleteProject)
 
 	// Council routes
 	mux.HandleFunc("GET /api/councils", h.handleAPIListCouncils)
@@ -494,6 +499,149 @@ func (h *Handler) handleAPISystemInfo(w http.ResponseWriter, r *http.Request) {
 	h.json(w, map[string]string{
 		"cwd": cwd,
 	})
+}
+
+func (h *Handler) handleAPIListProjects(w http.ResponseWriter, r *http.Request) {
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	if limit <= 0 {
+		limit = 20
+	}
+
+	projects, err := h.storage.ListProjects(limit, offset)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.json(w, projects)
+}
+
+func (h *Handler) handleAPIGetProject(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	project, err := h.storage.GetProject(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if project == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	debates, err := h.storage.ListDebatesByProject(id, 50, 0)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	councils, err := h.storage.ListCouncilsByProject(id, 50, 0)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.json(w, map[string]interface{}{
+		"project":  project,
+		"debates":  debates,
+		"councils": councils,
+	})
+}
+
+func (h *Handler) handleAPICreateProject(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name         string `json:"name"`
+		Description  string `json:"description"`
+		Instructions string `json:"instructions"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		h.jsonError(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	now := time.Now()
+	project := &core.Project{
+		ID:           core.GenerateID(),
+		Name:         strings.TrimSpace(req.Name),
+		Description:  strings.TrimSpace(req.Description),
+		Instructions: req.Instructions,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	if err := h.storage.CreateProject(project); err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.json(w, project)
+}
+
+func (h *Handler) handleAPIUpdateProject(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	project, err := h.storage.GetProject(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if project == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	var req struct {
+		Name         string `json:"name"`
+		Description  string `json:"description"`
+		Instructions string `json:"instructions"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if strings.TrimSpace(req.Name) == "" {
+		h.jsonError(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	project.Name = strings.TrimSpace(req.Name)
+	project.Description = strings.TrimSpace(req.Description)
+	project.Instructions = req.Instructions
+	project.UpdatedAt = time.Now()
+
+	if err := h.storage.UpdateProject(project); err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	h.json(w, project)
+}
+
+func (h *Handler) handleAPIDeleteProject(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	project, err := h.storage.GetProject(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if project == nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	if err := h.storage.DeleteProject(id); err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) handleAPICreateDebate(w http.ResponseWriter, r *http.Request) {

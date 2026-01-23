@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../lib/api';
 import type { CreateCouncilRequest, MemberSpec } from '../types';
@@ -12,10 +12,12 @@ const EXAMPLE_TOPICS = [
 
 export function NewCouncil() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [topic, setTopic] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState('');
 
   // Members state
   const [members, setMembers] = useState<MemberSpec[]>(() => {
@@ -39,6 +41,11 @@ export function NewCouncil() {
   const { data: systemInfo } = useQuery({
     queryKey: ['systemInfo'],
     queryFn: () => api.getSystemInfo(),
+  });
+
+  const { data: projects } = useQuery({
+    queryKey: ['projects', 'all'],
+    queryFn: () => api.getProjects(100, 0),
   });
 
   const isReady = !!(providers?.length && personas?.length);
@@ -67,6 +74,13 @@ export function NewCouncil() {
       })));
     }
   }, [providers, personas]);
+
+  useEffect(() => {
+    const projectFromQuery = searchParams.get('project');
+    if (projectFromQuery) {
+      setProjectId(projectFromQuery);
+    }
+  }, [searchParams]);
 
   const handleAddMember = () => {
     if (!providers || !personas) return;
@@ -131,6 +145,7 @@ export function NewCouncil() {
 
       const request: CreateCouncilRequest = {
         Topic: topic.trim(),
+        ProjectID: projectId || undefined,
         Members: members,
         auto_run: true,
       };
@@ -203,6 +218,22 @@ export function NewCouncil() {
             />
           </div>
 
+          <div>
+            <label className="text-xs uppercase tracking-widest text-[#859289] font-semibold">Project</label>
+            <select
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              className="mt-2 w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-brand-primary"
+            >
+              <option value="">No project</option>
+              {(projects || []).map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="bg-brand-card p-4 md:p-6 rounded-xl border border-brand-border animate-fadeIn space-y-4">
             <div className="flex justify-between items-center border-b border-brand-border pb-2">
               <h3 className="text-base md:text-lg font-medium text-[#d3c6aa]">Council Members</h3>
@@ -223,10 +254,8 @@ export function NewCouncil() {
                         onChange={(e) => handleMemberChange(index, 'Provider', e.target.value)}
                         className="w-full bg-brand-card border border-brand-border rounded-lg px-2 md:px-3 py-1.5 md:py-2 text-[#d3c6aa] focus:ring-2 focus:ring-brand-primary text-xs md:text-sm"
                       >
-                        {providers?.filter(p => p.name !== 'mock').map((p) => (
-                          <option key={p.name} value={p.name} disabled={!p.available}>
-                            {p.display_name} {!p.available && '(Unavailable)'}
-                          </option>
+                        {providers?.filter(p => p.available && p.name !== 'mock').map((p) => (
+                          <option key={p.name} value={p.name}>{p.display_name}</option>
                         ))}
                       </select>
                     </div>

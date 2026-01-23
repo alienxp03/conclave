@@ -5,7 +5,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/alienxp03/conclave/internal/core"
 	"github.com/alienxp03/conclave/internal/provider"
@@ -29,7 +31,7 @@ func setupTestHandler(t *testing.T) (*Handler, func()) {
 		os.RemoveAll(tmpDir)
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	
+
 	// Initialize schema
 	if err := store.Initialize(); err != nil {
 		store.Close()
@@ -38,7 +40,7 @@ func setupTestHandler(t *testing.T) (*Handler, func()) {
 	}
 
 	registry := provider.NewRegistry()
-	
+
 	// Create workspace manager - it loads from ~/.conclave/workspaces.json by default
 	workspaces, err := workspace.NewManager()
 	if err != nil {
@@ -168,8 +170,8 @@ func TestHandleAPIDebate_ReturnsStatsWithMetadata(t *testing.T) {
 	}
 
 	// Check aggregated stats
-	expectedTotalInput := 100 + 200 // 300
-	expectedTotalOutput := 50 + 75  // 125
+	expectedTotalInput := 100 + 200  // 300
+	expectedTotalOutput := 50 + 75   // 125
 	expectedTotalTokens := 150 + 275 // 425
 
 	if result.Stats.TotalInputTokens != expectedTotalInput {
@@ -191,5 +193,87 @@ func TestHandleAPIDebate_ReturnsStatsWithMetadata(t *testing.T) {
 	}
 	if result.Stats.AgentBTurnCount != 1 {
 		t.Errorf("Stats AgentBTurnCount = %d, want 1", result.Stats.AgentBTurnCount)
+	}
+}
+
+func TestHandleAPIProject_UpdateReinjectsInstructions(t *testing.T) {
+	handler, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	// Create project
+	project := &core.Project{
+		ID:           "project-001",
+		Name:         "Alpha",
+		Description:  "Test project",
+		Instructions: "Initial instructions",
+		CreatedAt:    time.Now(),
+		UpdatedAt:    time.Now(),
+	}
+	if err := handler.storage.CreateProject(project); err != nil {
+		t.Fatalf("Failed to create project: %v", err)
+	}
+
+	// Create debate and council tied to project
+	debate := &core.Debate{
+		ID:                  "debate-001",
+		Title:               "Project Debate",
+		Topic:               "Project topic",
+		CWD:                 "/tmp/test",
+		ProjectID:           project.ID,
+		ProjectInstructions: project.Instructions,
+		AgentA:              core.Agent{ID: "agent-a", Name: "Agent A", Provider: "mock", Persona: "optimist"},
+		AgentB:              core.Agent{ID: "agent-b", Name: "Agent B", Provider: "mock", Persona: "skeptic"},
+		Style:               "collaborative",
+		MaxTurns:            3,
+		Status:              core.StatusPending,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+	if err := handler.storage.CreateDebate(debate); err != nil {
+		t.Fatalf("Failed to create debate: %v", err)
+	}
+
+	council := &core.Council{
+		ID:                  "council-001",
+		Title:               "Project Council",
+		Topic:               "Council topic",
+		CWD:                 "/tmp/test",
+		ProjectID:           project.ID,
+		ProjectInstructions: project.Instructions,
+		Chairman:            core.Agent{ID: "chairman", Name: "Chairman", Provider: "mock", Persona: "chairman"},
+		Status:              core.StatusPending,
+		CreatedAt:           time.Now(),
+		UpdatedAt:           time.Now(),
+	}
+	if err := handler.storage.CreateCouncil(council); err != nil {
+		t.Fatalf("Failed to create council: %v", err)
+	}
+
+	// Update project instructions via API
+	payload := `{"name":"Alpha","description":"Test project","instructions":"Updated instructions"}`
+	req := httptest.NewRequest("PUT", "/api/projects/project-001", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "project-001")
+	w := httptest.NewRecorder()
+
+	handler.handleAPIUpdateProject(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	updatedDebate, err := handler.storage.GetDebate(debate.ID)
+	if err != nil {
+		t.Fatalf("Failed to load debate: %v", err)
+	}
+	if updatedDebate.ProjectInstructions != "Updated instructions" {
+		t.Errorf("Debate project instructions = %q, want %q", updatedDebate.ProjectInstructions, "Updated instructions")
+	}
+
+	updatedCouncil, err := handler.storage.GetCouncil(council.ID)
+	if err != nil {
+		t.Fatalf("Failed to load council: %v", err)
+	}
+	if updatedCouncil.ProjectInstructions != "Updated instructions" {
+		t.Errorf("Council project instructions = %q, want %q", updatedCouncil.ProjectInstructions, "Updated instructions")
 	}
 }

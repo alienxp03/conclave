@@ -131,7 +131,7 @@ var DefaultModelsForProvider = map[string][]string{
 	"gemini":   {"gemini-3-pro-preview", "gemini-3-flash-preview"},
 	"qwen":     {"qwen-3-coder-plus"},
 	"codex":    {"gpt-5.2-codex", "gpt-5.2"},
-	"opencode": {"zai-coding-plan/glm-4.7", "google/gemini-3-flash-preview"},
+	"opencode": {"zai-coding-plan/glm-4.7", "google/gemini-3-pro-preview", "google/gemini-3-flash-preview"},
 	"mock":     {"mock-v1", "mock-v2"},
 }
 

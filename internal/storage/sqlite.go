@@ -55,6 +55,8 @@ func (s *SQLiteStorage) Initialize() error {
 		title TEXT NOT NULL DEFAULT 'New conversation',
 		topic TEXT NOT NULL,
 		cwd TEXT NOT NULL DEFAULT '',
+		project_id TEXT NOT NULL DEFAULT '',
+		project_instructions TEXT NOT NULL DEFAULT '',
 		agent_a_json TEXT NOT NULL,
 		agent_b_json TEXT NOT NULL,
 		style TEXT NOT NULL,
@@ -105,12 +107,23 @@ func (s *SQLiteStorage) Initialize() error {
 		title TEXT NOT NULL DEFAULT 'New conversation',
 		topic TEXT NOT NULL,
 		cwd TEXT NOT NULL DEFAULT '',
+		project_id TEXT NOT NULL DEFAULT '',
+		project_instructions TEXT NOT NULL DEFAULT '',
 		chairman_json TEXT NOT NULL,
 		status TEXT NOT NULL DEFAULT 'pending',
 		synthesis TEXT,
 		created_at DATETIME NOT NULL,
 		updated_at DATETIME NOT NULL,
 		completed_at DATETIME
+	);
+
+	CREATE TABLE IF NOT EXISTS projects (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		instructions TEXT NOT NULL DEFAULT '',
+		created_at DATETIME NOT NULL,
+		updated_at DATETIME NOT NULL
 	);
 
 	CREATE TABLE IF NOT EXISTS council_members (
@@ -156,6 +169,7 @@ func (s *SQLiteStorage) Initialize() error {
 	CREATE INDEX IF NOT EXISTS idx_rankings_council_id ON rankings(council_id);
 	CREATE INDEX IF NOT EXISTS idx_councils_status ON councils(status);
 	CREATE INDEX IF NOT EXISTS idx_councils_created_at ON councils(created_at DESC);
+	CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at DESC);
 	`
 
 	_, err := s.db.Exec(schema)
@@ -178,6 +192,11 @@ func (s *SQLiteStorage) migrate() {
 	// Add cwd column if not exists
 	s.db.Exec("ALTER TABLE debates ADD COLUMN cwd TEXT NOT NULL DEFAULT ''")
 	s.db.Exec("ALTER TABLE councils ADD COLUMN cwd TEXT NOT NULL DEFAULT ''")
+	// Add project columns if not exists
+	s.db.Exec("ALTER TABLE debates ADD COLUMN project_id TEXT NOT NULL DEFAULT ''")
+	s.db.Exec("ALTER TABLE debates ADD COLUMN project_instructions TEXT NOT NULL DEFAULT ''")
+	s.db.Exec("ALTER TABLE councils ADD COLUMN project_id TEXT NOT NULL DEFAULT ''")
+	s.db.Exec("ALTER TABLE councils ADD COLUMN project_instructions TEXT NOT NULL DEFAULT ''")
 	// Add title column if not exists
 	s.db.Exec("ALTER TABLE debates ADD COLUMN title TEXT NOT NULL DEFAULT 'New conversation'")
 	s.db.Exec("ALTER TABLE councils ADD COLUMN title TEXT NOT NULL DEFAULT 'New conversation'")
@@ -269,8 +288,8 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 	}
 
 	query := `
-	INSERT INTO debates (id, title, topic, cwd, agent_a_json, agent_b_json, style, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO debates (id, title, topic, cwd, project_id, project_instructions, agent_a_json, agent_b_json, style, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	readOnly := 0
@@ -283,6 +302,8 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 		debate.Title,
 		debate.Topic,
 		debate.CWD,
+		debate.ProjectID,
+		debate.ProjectInstructions,
 		string(agentAJSON),
 		string(agentBJSON),
 		debate.Style,
@@ -305,7 +326,7 @@ func (s *SQLiteStorage) CreateDebate(debate *core.Debate) error {
 // GetDebate retrieves a debate by ID.
 func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 	query := `
-	SELECT id, title, topic, cwd, agent_a_json, agent_b_json, style, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at
+	SELECT id, title, topic, cwd, project_id, project_instructions, agent_a_json, agent_b_json, style, max_turns, status, read_only, conclusion_json, created_at, updated_at, completed_at
 	FROM debates
 	WHERE id = ?
 	`
@@ -321,6 +342,8 @@ func (s *SQLiteStorage) GetDebate(id string) (*core.Debate, error) {
 		&debate.Title,
 		&debate.Topic,
 		&debate.CWD,
+		&debate.ProjectID,
+		&debate.ProjectInstructions,
 		&agentAJSON,
 		&agentBJSON,
 		&debate.Style,
@@ -432,7 +455,7 @@ func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
 
 	query := `
 	UPDATE debates
-	SET title = ?, topic = ?, cwd = ?, agent_a_json = ?, agent_b_json = ?, style = ?, max_turns = ?, status = ?, read_only = ?, conclusion_json = ?, updated_at = ?, completed_at = ?
+	SET title = ?, topic = ?, cwd = ?, project_id = ?, project_instructions = ?, agent_a_json = ?, agent_b_json = ?, style = ?, max_turns = ?, status = ?, read_only = ?, conclusion_json = ?, updated_at = ?, completed_at = ?
 	WHERE id = ?
 	`
 
@@ -440,6 +463,8 @@ func (s *SQLiteStorage) UpdateDebate(debate *core.Debate) error {
 		debate.Title,
 		debate.Topic,
 		debate.CWD,
+		debate.ProjectID,
+		debate.ProjectInstructions,
 		string(agentAJSON),
 		string(agentBJSON),
 		debate.Style,
@@ -489,7 +514,7 @@ func (s *SQLiteStorage) DeleteDebate(id string) error {
 // ListDebates returns a list of debate summaries.
 func (s *SQLiteStorage) ListDebates(limit, offset int) ([]*core.DebateSummary, error) {
 	query := `
-	SELECT d.id, d.title, d.topic, d.cwd, d.status, d.style, d.read_only, d.agent_a_json, d.agent_b_json, d.created_at,
+	SELECT d.id, d.title, d.topic, d.cwd, d.project_id, d.status, d.style, d.read_only, d.agent_a_json, d.agent_b_json, d.created_at,
 		   (SELECT COUNT(*) FROM turns WHERE debate_id = d.id) as turn_count
 	FROM debates d
 	ORDER BY d.created_at DESC
@@ -513,6 +538,7 @@ func (s *SQLiteStorage) ListDebates(limit, offset int) ([]*core.DebateSummary, e
 			&summary.Title,
 			&summary.Topic,
 			&summary.CWD,
+			&summary.ProjectID,
 			&summary.Status,
 			&summary.Style,
 			&readOnly,
@@ -532,6 +558,61 @@ func (s *SQLiteStorage) ListDebates(limit, offset int) ([]*core.DebateSummary, e
 		summary.AgentA = fmt.Sprintf("%s:%s", agentA.Provider, agentA.Persona)
 		summary.AgentB = fmt.Sprintf("%s:%s", agentB.Provider, agentB.Persona)
 
+		summary.ReadOnly = readOnly == 1
+
+		summaries = append(summaries, &summary)
+	}
+
+	return summaries, nil
+}
+
+// ListDebatesByProject returns debate summaries for a specific project.
+func (s *SQLiteStorage) ListDebatesByProject(projectID string, limit, offset int) ([]*core.DebateSummary, error) {
+	query := `
+	SELECT d.id, d.title, d.topic, d.cwd, d.project_id, d.status, d.style, d.read_only, d.agent_a_json, d.agent_b_json, d.created_at,
+		   (SELECT COUNT(*) FROM turns WHERE debate_id = d.id) as turn_count
+	FROM debates d
+	WHERE d.project_id = ?
+	ORDER BY d.created_at DESC
+	LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.Query(query, projectID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list debates by project: %w", err)
+	}
+	defer rows.Close()
+
+	var summaries []*core.DebateSummary
+	for rows.Next() {
+		var summary core.DebateSummary
+		var agentAJSON, agentBJSON string
+		var readOnly int
+
+		err := rows.Scan(
+			&summary.ID,
+			&summary.Title,
+			&summary.Topic,
+			&summary.CWD,
+			&summary.ProjectID,
+			&summary.Status,
+			&summary.Style,
+			&readOnly,
+			&agentAJSON,
+			&agentBJSON,
+			&summary.CreatedAt,
+			&summary.TurnCount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan debate summary: %w", err)
+		}
+
+		var agentA, agentB core.Agent
+		json.Unmarshal([]byte(agentAJSON), &agentA)
+		json.Unmarshal([]byte(agentBJSON), &agentB)
+
+		summary.AgentA = fmt.Sprintf("%s:%s", agentA.Provider, agentA.Persona)
+		summary.AgentB = fmt.Sprintf("%s:%s", agentB.Provider, agentB.Persona)
 		summary.ReadOnly = readOnly == 1
 
 		summaries = append(summaries, &summary)
@@ -985,8 +1066,8 @@ func (s *SQLiteStorage) CreateCouncil(council *core.Council) error {
 	}
 
 	query := `
-	INSERT INTO councils (id, title, topic, cwd, chairman_json, status, synthesis, created_at, updated_at, completed_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO councils (id, title, topic, cwd, project_id, project_instructions, chairman_json, status, synthesis, created_at, updated_at, completed_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	var completedAt *time.Time
@@ -999,6 +1080,8 @@ func (s *SQLiteStorage) CreateCouncil(council *core.Council) error {
 		council.Title,
 		council.Topic,
 		council.CWD,
+		council.ProjectID,
+		council.ProjectInstructions,
 		string(chairmanJSON),
 		council.Status,
 		synthesesJSON,
@@ -1043,7 +1126,7 @@ func (s *SQLiteStorage) insertCouncilMember(councilID string, member core.Agent)
 // GetCouncil retrieves a council by ID.
 func (s *SQLiteStorage) GetCouncil(id string) (*core.Council, error) {
 	query := `
-	SELECT id, title, topic, cwd, chairman_json, status, synthesis, created_at, updated_at, completed_at
+	SELECT id, title, topic, cwd, project_id, project_instructions, chairman_json, status, synthesis, created_at, updated_at, completed_at
 	FROM councils
 	WHERE id = ?
 	`
@@ -1058,6 +1141,8 @@ func (s *SQLiteStorage) GetCouncil(id string) (*core.Council, error) {
 		&council.Title,
 		&council.Topic,
 		&council.CWD,
+		&council.ProjectID,
+		&council.ProjectInstructions,
 		&chairmanJSON,
 		&council.Status,
 		&synthesesJSON,
@@ -1166,7 +1251,7 @@ func (s *SQLiteStorage) UpdateCouncil(council *core.Council) error {
 
 	query := `
 	UPDATE councils
-	SET title = ?, topic = ?, cwd = ?, chairman_json = ?, status = ?, synthesis = ?, updated_at = ?, completed_at = ?
+	SET title = ?, topic = ?, cwd = ?, project_id = ?, project_instructions = ?, chairman_json = ?, status = ?, synthesis = ?, updated_at = ?, completed_at = ?
 	WHERE id = ?
 	`
 
@@ -1179,6 +1264,8 @@ func (s *SQLiteStorage) UpdateCouncil(council *core.Council) error {
 		council.Title,
 		council.Topic,
 		council.CWD,
+		council.ProjectID,
+		council.ProjectInstructions,
 		string(chairmanJSON),
 		council.Status,
 		synthesesJSON,
@@ -1220,6 +1307,7 @@ func (s *SQLiteStorage) ListCouncils(limit, offset int) ([]*core.CouncilSummary,
 		c.title,
 		c.topic,
 		c.cwd,
+		c.project_id,
 		c.status,
 		c.created_at,
 		COUNT(cm.id) as member_count
@@ -1244,6 +1332,55 @@ func (s *SQLiteStorage) ListCouncils(limit, offset int) ([]*core.CouncilSummary,
 			&summary.Title,
 			&summary.Topic,
 			&summary.CWD,
+			&summary.ProjectID,
+			&summary.Status,
+			&summary.CreatedAt,
+			&summary.MemberCount,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan council summary: %w", err)
+		}
+		summaries = append(summaries, &summary)
+	}
+
+	return summaries, nil
+}
+
+// ListCouncilsByProject returns council summaries for a specific project.
+func (s *SQLiteStorage) ListCouncilsByProject(projectID string, limit, offset int) ([]*core.CouncilSummary, error) {
+	query := `
+	SELECT
+		c.id,
+		c.title,
+		c.topic,
+		c.cwd,
+		c.project_id,
+		c.status,
+		c.created_at,
+		COUNT(cm.id) as member_count
+	FROM councils c
+	LEFT JOIN council_members cm ON c.id = cm.council_id
+	WHERE c.project_id = ?
+	GROUP BY c.id
+	ORDER BY c.created_at DESC
+	LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.Query(query, projectID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list councils by project: %w", err)
+	}
+	defer rows.Close()
+
+	var summaries []*core.CouncilSummary
+	for rows.Next() {
+		var summary core.CouncilSummary
+		err := rows.Scan(
+			&summary.ID,
+			&summary.Title,
+			&summary.Topic,
+			&summary.CWD,
+			&summary.ProjectID,
 			&summary.Status,
 			&summary.CreatedAt,
 			&summary.MemberCount,
@@ -1417,4 +1554,171 @@ func (s *SQLiteStorage) GetRankings(councilID string) ([]*core.Ranking, error) {
 	}
 
 	return rankings, nil
+}
+
+// CreateProject creates a new project.
+func (s *SQLiteStorage) CreateProject(project *core.Project) error {
+	query := `
+	INSERT INTO projects (id, name, description, instructions, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?)
+	`
+
+	_, err := s.db.Exec(query,
+		project.ID,
+		project.Name,
+		project.Description,
+		project.Instructions,
+		project.CreatedAt,
+		project.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert project: %w", err)
+	}
+
+	return nil
+}
+
+// GetProject retrieves a project by ID.
+func (s *SQLiteStorage) GetProject(id string) (*core.Project, error) {
+	query := `
+	SELECT id, name, description, instructions, created_at, updated_at
+	FROM projects
+	WHERE id = ?
+	`
+
+	var project core.Project
+	err := s.db.QueryRow(query, id).Scan(
+		&project.ID,
+		&project.Name,
+		&project.Description,
+		&project.Instructions,
+		&project.CreatedAt,
+		&project.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project: %w", err)
+	}
+
+	return &project, nil
+}
+
+// UpdateProject updates an existing project and re-injects instructions into chats.
+func (s *SQLiteStorage) UpdateProject(project *core.Project) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin project update: %w", err)
+	}
+
+	updateProjectQuery := `
+	UPDATE projects
+	SET name = ?, description = ?, instructions = ?, updated_at = ?
+	WHERE id = ?
+	`
+
+	if _, err := tx.Exec(updateProjectQuery,
+		project.Name,
+		project.Description,
+		project.Instructions,
+		project.UpdatedAt,
+		project.ID,
+	); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to update project: %w", err)
+	}
+
+	updateDebatesQuery := `
+	UPDATE debates
+	SET project_instructions = ?, updated_at = ?
+	WHERE project_id = ?
+	`
+
+	if _, err := tx.Exec(updateDebatesQuery, project.Instructions, time.Now(), project.ID); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to update project instructions in debates: %w", err)
+	}
+
+	updateCouncilsQuery := `
+	UPDATE councils
+	SET project_instructions = ?, updated_at = ?
+	WHERE project_id = ?
+	`
+
+	if _, err := tx.Exec(updateCouncilsQuery, project.Instructions, time.Now(), project.ID); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to update project instructions in councils: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit project update: %w", err)
+	}
+
+	return nil
+}
+
+// DeleteProject deletes a project and all associated chats.
+func (s *SQLiteStorage) DeleteProject(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin project delete: %w", err)
+	}
+
+	if _, err := tx.Exec("DELETE FROM debates WHERE project_id = ?", id); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to delete project debates: %w", err)
+	}
+
+	if _, err := tx.Exec("DELETE FROM councils WHERE project_id = ?", id); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to delete project councils: %w", err)
+	}
+
+	if _, err := tx.Exec("DELETE FROM projects WHERE id = ?", id); err != nil {
+		tx.Rollback()
+		return fmt.Errorf("failed to delete project: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit project delete: %w", err)
+	}
+
+	return nil
+}
+
+// ListProjects returns a list of projects.
+func (s *SQLiteStorage) ListProjects(limit, offset int) ([]*core.Project, error) {
+	query := `
+	SELECT id, name, description, instructions, created_at, updated_at
+	FROM projects
+	ORDER BY updated_at DESC
+	LIMIT ? OFFSET ?
+	`
+
+	rows, err := s.db.Query(query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+	defer rows.Close()
+
+	var projects []*core.Project
+	for rows.Next() {
+		var project core.Project
+		err := rows.Scan(
+			&project.ID,
+			&project.Name,
+			&project.Description,
+			&project.Instructions,
+			&project.CreatedAt,
+			&project.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan project: %w", err)
+		}
+		projects = append(projects, &project)
+	}
+
+	return projects, nil
 }

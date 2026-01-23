@@ -22,6 +22,15 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
     refetchInterval: 3000,
   });
 
+  const { data: projects } = useQuery({
+    queryKey: ['projects', 'recent'],
+    queryFn: () => api.getProjects(50, 0),
+    refetchInterval: 5000,
+  });
+
+  const recentProjects = (projects || []).slice(0, 5);
+  const projectNameById = new Map((projects || []).map(project => [project.id, project.name]));
+
   const allItems = [
     ...(debates || []).map(d => ({ ...d, type: 'debate' as const })),
     ...(councils || []).map(c => ({
@@ -29,6 +38,7 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
       title: c.title,
       topic: c.topic,
       created_at: c.created_at,
+      project_id: c.project_id,
       type: 'council' as const,
     }))
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -107,14 +117,57 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 overflow-y-auto p-2 space-y-2">
         {!isCollapsed && (
           <div className="px-2 py-2 text-[10px] font-bold text-[#859289] uppercase tracking-widest opacity-70">
+            Projects
+          </div>
+        )}
+        {recentProjects.map((project) => {
+          const isActive = location.pathname.includes(`/projects/${project.id}`);
+          return (
+            <Link
+              key={project.id}
+              to={`/projects/${project.id}`}
+              className={`block rounded-lg text-sm transition-all duration-200 ${
+                isCollapsed ? 'px-2 py-2' : 'px-3 py-2'
+              } ${
+                isActive
+                  ? 'bg-brand-primary text-[#2b3339] shadow-lg font-bold'
+                  : 'text-[#9da9a0] hover:text-[#d3c6aa] hover:bg-brand-bg'
+              }`}
+              title={project.name}
+            >
+              {isCollapsed ? (
+                <div className="flex justify-center">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
+                  </svg>
+                </div>
+              ) : (
+                project.name
+              )}
+            </Link>
+          );
+        })}
+        {!isCollapsed && (
+          <Link
+            to="/projects"
+            className="block px-3 py-2 text-xs text-[#859289] hover:text-brand-primary transition-colors"
+          >
+            View all projects
+          </Link>
+        )}
+
+        {!isCollapsed && (
+          <div className="px-2 pt-4 pb-2 text-[10px] font-bold text-[#859289] uppercase tracking-widest opacity-70">
             Recent Conversations
           </div>
         )}
         {allItems.map((item) => {
           const isActive = location.pathname.includes(item.id);
+          const projectName = item.project_id ? projectNameById.get(item.project_id) : undefined;
+          const projectLabel = projectName || (item.project_id ? 'Unknown project' : 'No project');
           return (
             <Link
               key={item.id}
@@ -126,7 +179,7 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
                   ? 'bg-brand-primary text-[#2b3339] shadow-lg font-bold'
                   : 'text-[#9da9a0] hover:text-[#d3c6aa] hover:bg-brand-bg'
               }`}
-              title={item.title || item.topic}
+              title={`${item.title || item.topic || 'New conversation'} • ${projectLabel}`}
             >
               {isCollapsed ? (
                 <div className="flex justify-center">
@@ -135,7 +188,12 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
                   </svg>
                 </div>
               ) : (
-                item.title || "New conversation"
+                <div className="flex flex-col gap-1">
+                  <div className="text-sm font-medium">{item.title || 'New conversation'}</div>
+                  <div className={`text-[11px] ${isActive ? 'text-[#2b3339]/80' : 'text-[#728072]'}`}>
+                    {projectLabel}
+                  </div>
+                </div>
               )}
             </Link>
           );

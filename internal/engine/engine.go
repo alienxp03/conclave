@@ -115,14 +115,28 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 		}
 	}
 
+	var projectInstructions string
+	if config.ProjectID != "" {
+		project, err := e.storage.GetProject(config.ProjectID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load project: %w", err)
+		}
+		if project == nil {
+			return nil, fmt.Errorf("project not found")
+		}
+		projectInstructions = project.Instructions
+	}
+
 	debate := &core.Debate{
-		ID:          core.GenerateID(),
-		Topic:       config.Topic,
-		CWD:         cwd,
-		WorkspaceID: config.WorkspaceID,
+		ID:                  core.GenerateID(),
+		Topic:               config.Topic,
+		CWD:                 cwd,
+		WorkspaceID:         config.WorkspaceID,
+		ProjectID:           config.ProjectID,
+		ProjectInstructions: projectInstructions,
 		AgentA: core.Agent{
 			ID:         agentAID,
-			Name:       fmt.Sprintf("Agent A (%s)", personaADef.Name),
+			Name:       fmt.Sprintf("%s (%s) • %s", config.AgentAProvider, personaADef.Name, agentAModel),
 			MaskedName: maskedNames[agentAID],
 			Provider:   config.AgentAProvider,
 			Model:      agentAModel,
@@ -130,7 +144,7 @@ func (e *Engine) CreateDebate(ctx context.Context, config core.NewDebateConfig) 
 		},
 		AgentB: core.Agent{
 			ID:         agentBID,
-			Name:       fmt.Sprintf("Agent B (%s)", personaBDef.Name),
+			Name:       fmt.Sprintf("%s (%s) • %s", config.AgentBProvider, personaBDef.Name, agentBModel),
 			MaskedName: maskedNames[agentBID],
 			Provider:   config.AgentBProvider,
 			Model:      agentBModel,
@@ -464,14 +478,19 @@ func (e *Engine) verifyConsensus(ctx context.Context, debate *core.Debate) bool 
 	turns, _ := e.storage.GetTurns(debate.ID)
 	history := e.buildDebateHistory(debate, turns)
 
-	prompt := fmt.Sprintf(`You are reviewing a debate on: "%s"
+	instructionBlock := ""
+	if instructions := formatProjectInstructions(debate.ProjectInstructions); instructions != "" {
+		instructionBlock = "\n\n" + instructions
+	}
+
+	prompt := fmt.Sprintf(`You are reviewing a debate on: "%s"%s
 
 Recent discussion:
 %s
 
 Based on the last few exchanges, have both participants clearly reached a consensus or agreement on the main points?
 
-Answer with only YES or NO.`, debate.Topic, history)
+Answer with only YES or NO.`, debate.Topic, instructionBlock, history)
 
 	var response string
 	if debate.AgentA.Model != "" {
@@ -633,14 +652,23 @@ func (e *Engine) buildPrompt(debate *core.Debate, agent core.Agent, turns []*cor
 		return "", fmt.Errorf("failed to execute template: %w", err)
 	}
 
-	// Combine persona and style prompt
-	fullPrompt := fmt.Sprintf(`%s
-
-%s
-
-Use Markdown format.`, personaDef.SystemPrompt, buf.String())
+	// Combine persona, project instructions, and style prompt
+	sections := []string{personaDef.SystemPrompt}
+	if instructions := formatProjectInstructions(debate.ProjectInstructions); instructions != "" {
+		sections = append(sections, instructions)
+	}
+	sections = append(sections, buf.String(), "Use Markdown format.")
+	fullPrompt := strings.Join(sections, "\n\n")
 
 	return fullPrompt, nil
+}
+
+func formatProjectInstructions(instructions string) string {
+	trimmed := strings.TrimSpace(instructions)
+	if trimmed == "" {
+		return ""
+	}
+	return fmt.Sprintf("Project instructions:\n%s", trimmed)
 }
 
 // generateConclusion generates the final conclusion for the debate with voting.
@@ -714,7 +742,12 @@ func (e *Engine) getAgentVote(ctx context.Context, debate *core.Debate, agent co
 		return nil, err
 	}
 
-	votePrompt := fmt.Sprintf(`You participated in a debate on: "%s"
+	instructionBlock := ""
+	if instructions := formatProjectInstructions(debate.ProjectInstructions); instructions != "" {
+		instructionBlock = "\n\n" + instructions
+	}
+
+	votePrompt := fmt.Sprintf(`You participated in a debate on: "%s"%s
 
 Here is the full debate:
 %s
@@ -728,7 +761,7 @@ Consider:
 
 Respond in this exact format:
 VOTE: [AGREE/DISAGREE]
-REASONING: [Brief explanation of your vote - 1-2 sentences]`, debate.Topic, history)
+REASONING: [Brief explanation of your vote - 1-2 sentences]`, debate.Topic, instructionBlock, history)
 
 	model := agent.Model
 	if model == "" {
@@ -805,7 +838,12 @@ func (e *Engine) generateSummary(ctx context.Context, debate *core.Debate, histo
 		consensusStatus = "Both agents agreed on a consensus."
 	}
 
-	summaryPrompt := fmt.Sprintf(`Summarize this debate on: "%s"
+	instructionBlock := ""
+	if instructions := formatProjectInstructions(debate.ProjectInstructions); instructions != "" {
+		instructionBlock = "\n\n" + instructions
+	}
+
+	summaryPrompt := fmt.Sprintf(`Summarize this debate on: "%s"%s
 
 Debate history:
 %s
@@ -814,7 +852,7 @@ Voting results: %s
 
 Provide a brief, objective summary (2-3 sentences) of the key points discussed and the outcome.
 
-Use Markdown format.`, debate.Topic, history, consensusStatus)
+Use Markdown format.`, debate.Topic, instructionBlock, history, consensusStatus)
 
 	model := debate.AgentA.Model
 	if model == "" {

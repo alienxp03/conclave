@@ -18,21 +18,23 @@ const (
 
 // Debate represents a debate session between two AI agents.
 type Debate struct {
-	ID          string        `json:"id"`
-	Title       string        `json:"title"`
-	Topic       string        `json:"topic"`
-	CWD         string        `json:"cwd"`
-	WorkspaceID string        `json:"workspace_id,omitempty"` // ID of the workspace (if any)
-	AgentA      Agent         `json:"agent_a"`
-	AgentB      Agent         `json:"agent_b"`
-	Style       string        `json:"style"`
-	MaxTurns    int           `json:"max_turns"` // Turns per agent (total = MaxTurns * 2)
-	Status      DebateStatus  `json:"status"`
-	ReadOnly    bool          `json:"read_only"` // If true, debate cannot be modified or deleted
-	Conclusions []*Conclusion `json:"conclusions,omitempty"`
-	CreatedAt   time.Time     `json:"created_at"`
-	UpdatedAt   time.Time     `json:"updated_at"`
-	CompletedAt *time.Time    `json:"completed_at,omitempty"`
+	ID                  string        `json:"id"`
+	Title               string        `json:"title"`
+	Topic               string        `json:"topic"`
+	CWD                 string        `json:"cwd"`
+	WorkspaceID         string        `json:"workspace_id,omitempty"` // ID of the workspace (if any)
+	ProjectID           string        `json:"project_id,omitempty"`
+	ProjectInstructions string        `json:"project_instructions,omitempty"`
+	AgentA              Agent         `json:"agent_a"`
+	AgentB              Agent         `json:"agent_b"`
+	Style               string        `json:"style"`
+	MaxTurns            int           `json:"max_turns"` // Turns per agent (total = MaxTurns * 2)
+	Status              DebateStatus  `json:"status"`
+	ReadOnly            bool          `json:"read_only"` // If true, debate cannot be modified or deleted
+	Conclusions         []*Conclusion `json:"conclusions,omitempty"`
+	CreatedAt           time.Time     `json:"created_at"`
+	UpdatedAt           time.Time     `json:"updated_at"`
+	CompletedAt         *time.Time    `json:"completed_at,omitempty"`
 }
 
 // Agent represents an AI agent participating in a debate.
@@ -172,6 +174,7 @@ type DebateSummary struct {
 	Topic       string       `json:"topic"`
 	CWD         string       `json:"cwd"`
 	WorkspaceID string       `json:"workspace_id,omitempty"`
+	ProjectID   string       `json:"project_id,omitempty"`
 	Status      DebateStatus `json:"status"`
 	Style       string       `json:"style"`
 	AgentA      string       `json:"agent_a"` // "provider:persona"
@@ -185,6 +188,7 @@ type DebateSummary struct {
 type NewDebateConfig struct {
 	Topic          string `json:"topic"`
 	WorkspaceID    string `json:"workspace_id"`
+	ProjectID      string `json:"project_id"`
 	AgentAProvider string `json:"agent_a_provider"`
 	AgentAModel    string `json:"agent_a_model"`
 	AgentAPersona  string `json:"agent_a_persona"`
@@ -222,18 +226,20 @@ type CouncilSynthesis struct {
 
 // Council represents a multi-agent council session.
 type Council struct {
-	ID          string              `json:"id"`
-	Title       string              `json:"title"`
-	Topic       string              `json:"topic"`
-	CWD         string              `json:"cwd"`
-	WorkspaceID string              `json:"workspace_id,omitempty"`
-	Members     []Agent             `json:"members"`
-	Chairman    Agent               `json:"chairman"`
-	Status      DebateStatus        `json:"status"`
-	Syntheses   []*CouncilSynthesis `json:"syntheses,omitempty"`
-	CreatedAt   time.Time           `json:"created_at"`
-	UpdatedAt   time.Time           `json:"updated_at"`
-	CompletedAt *time.Time          `json:"completed_at,omitempty"`
+	ID                  string              `json:"id"`
+	Title               string              `json:"title"`
+	Topic               string              `json:"topic"`
+	CWD                 string              `json:"cwd"`
+	WorkspaceID         string              `json:"workspace_id,omitempty"`
+	ProjectID           string              `json:"project_id,omitempty"`
+	ProjectInstructions string              `json:"project_instructions,omitempty"`
+	Members             []Agent             `json:"members"`
+	Chairman            Agent               `json:"chairman"`
+	Status              DebateStatus        `json:"status"`
+	Syntheses           []*CouncilSynthesis `json:"syntheses,omitempty"`
+	CreatedAt           time.Time           `json:"created_at"`
+	UpdatedAt           time.Time           `json:"updated_at"`
+	CompletedAt         *time.Time          `json:"completed_at,omitempty"`
 }
 
 // ResponseType represents the type of council response for tracking.
@@ -329,6 +335,7 @@ type CouncilSummary struct {
 	Topic       string       `json:"topic"`
 	CWD         string       `json:"cwd"`
 	WorkspaceID string       `json:"workspace_id,omitempty"`
+	ProjectID   string       `json:"project_id,omitempty"`
 	Status      DebateStatus `json:"status"`
 	MemberCount int          `json:"member_count"`
 	CreatedAt   time.Time    `json:"created_at"`
@@ -338,8 +345,19 @@ type CouncilSummary struct {
 type NewCouncilConfig struct {
 	Topic       string
 	WorkspaceID string
+	ProjectID   string
 	Members     []MemberSpec
 	Chairman    *MemberSpec // Optional, defaults to first member's provider with best model
+}
+
+// Project represents a top-level workspace for chats.
+type Project struct {
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	Instructions string    `json:"instructions"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // MemberSpec specifies a council member: provider[/model][:persona]

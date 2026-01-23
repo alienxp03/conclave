@@ -75,6 +75,8 @@ export interface Debate {
   title: string;
   topic: string;
   cwd: string;
+  project_id?: string;
+  project_instructions?: string;
   agent_a: Agent;
   agent_b: Agent;
   status: DebateStatus;
@@ -93,6 +95,7 @@ export interface DebateSummary {
   title: string;
   topic: string;
   cwd: string;
+  project_id?: string;
   status: DebateStatus;
   style: string;
   agent_a: string;
@@ -126,6 +129,7 @@ export interface Style {
 
 export interface CreateDebateRequest {
   topic: string;
+  project_id?: string;
   agent_a_provider: string;
   agent_a_model: string;
   agent_a_persona: string;
@@ -142,6 +146,7 @@ export interface CouncilSummary {
   title: string;
   topic: string;
   cwd: string;
+  project_id?: string;
   status: DebateStatus;
   member_count: number;
   created_at: string;
@@ -160,6 +165,7 @@ export interface MemberSpec {
 
 export interface CreateCouncilRequest {
   Topic: string;
+  ProjectID?: string;
   Members: MemberSpec[];
   Chairman?: MemberSpec;
   auto_run?: boolean;
@@ -183,6 +189,8 @@ export interface Council {
   title: string;
   topic: string;
   cwd: string;
+  project_id?: string;
+  project_instructions?: string;
   members: Agent[];
   chairman: Agent;
   status: DebateStatus;
@@ -229,4 +237,13 @@ export interface CouncilRanking {
   duration_ms?: number;
   model?: string;
   stop_reason?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  created_at: string;
+  updated_at: string;
 }
