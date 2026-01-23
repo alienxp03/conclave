@@ -1,4 +1,4 @@
-.PHONY: build test clean run serve help install uninstall build-frontend dev-frontend
+.PHONY: build test clean run serve restart help install uninstall build-frontend dev-frontend
 
 # Binary names
 CLI_BINARY=conclave
@@ -7,6 +7,7 @@ SERVER_BINARY=conclave-server
 # Build directory
 BUILD_DIR=bin
 WEB_DIR=web/app
+PORT ?= 8182
 
 # Go parameters
 # Use mise-managed Go if available (fixes GOROOT mismatch)
@@ -67,6 +68,17 @@ run: build-cli ## Build and show CLI help
 
 serve: build-server ## Build and start web server
 	./$(BUILD_DIR)/$(SERVER_BINARY) --debug | tee -a logs/dev.log
+
+restart: build-server ## Restart web server on default port in background
+	@mkdir -p logs
+	@PID=$$(lsof -ti tcp:$(PORT) 2>/dev/null); \
+	if [ -n "$$PID" ]; then \
+		echo "Stopping server on port $(PORT) (pid $$PID)"; \
+		kill $$PID; \
+		sleep 1; \
+	fi
+	@echo "Starting server on port $(PORT)..."
+	@nohup ./$(BUILD_DIR)/$(SERVER_BINARY) --debug --port $(PORT) >> logs/dev.log 2>&1 &
 
 install: build ## Install conclave to ~/.local/bin (no sudo)
 	@mkdir -p ~/.local/bin
