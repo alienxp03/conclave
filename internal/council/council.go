@@ -292,9 +292,17 @@ func (e *Engine) RunCouncilWithCallbacks(ctx context.Context, council *core.Coun
 	synthesis, err := e.GenerateSynthesis(ctx, council, currentResponses, currentRankings)
 	if err != nil {
 		slog.Error("Stage 3 failed", "error", err)
-		council.Status = core.StatusFailed
-		e.storage.UpdateCouncil(council)
-		return fmt.Errorf("stage 3 failed: %w", err)
+		round := 1
+		if len(currentResponses) > 0 {
+			round = currentResponses[0].Round
+		}
+		synthesis = &core.CouncilSynthesis{
+			Round:      round,
+			Content:    "Synthesis unavailable: chairman model failed. Review the responses above.",
+			CreatedAt:  time.Now(),
+			Model:      "system",
+			StopReason: "error",
+		}
 	}
 
 	if callbacks != nil && callbacks.OnSynthesisComplete != nil {
@@ -380,14 +388,13 @@ func (e *Engine) CollectResponsesWithCallback(ctx context.Context, council *core
 
 	// Collect all results
 	responses := make([]core.Response, 0, len(council.Members))
-	var firstErr error
+	var errCount int
 
 	for i := 0; i < len(council.Members); i++ {
 		result := <-resultChan
 		if result.err != nil {
-			if firstErr == nil {
-				firstErr = result.err
-			}
+			errCount++
+			slog.Warn("Response generation failed", "agent", result.agent.Name, "error", result.err)
 			continue
 		}
 
@@ -399,12 +406,12 @@ func (e *Engine) CollectResponsesWithCallback(ctx context.Context, council *core
 		}
 	}
 
-	if firstErr != nil {
-		return nil, firstErr
-	}
-
 	if len(responses) == 0 {
 		return nil, fmt.Errorf("no responses collected")
+	}
+
+	if errCount > 0 {
+		slog.Warn("Some responses failed", "failed", errCount, "total", len(council.Members))
 	}
 
 	return responses, nil
@@ -485,14 +492,13 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 
 	// Collect all results
 	rankings := make([]core.Ranking, 0, len(council.Members))
-	var firstErr error
+	var errCount int
 
 	for i := 0; i < len(council.Members); i++ {
 		result := <-resultChan
 		if result.err != nil {
-			if firstErr == nil {
-				firstErr = result.err
-			}
+			errCount++
+			slog.Warn("Ranking generation failed", "agent", result.agent.Name, "error", result.err)
 			continue
 		}
 
@@ -504,12 +510,13 @@ func (e *Engine) CollectRankingsWithCallback(ctx context.Context, council *core.
 		}
 	}
 
-	if firstErr != nil {
-		return nil, firstErr
+	if len(rankings) == 0 {
+		slog.Warn("No rankings collected", "council_id", council.ID)
+		return rankings, nil
 	}
 
-	if len(rankings) == 0 {
-		return nil, fmt.Errorf("no rankings collected")
+	if errCount > 0 {
+		slog.Warn("Some rankings failed", "failed", errCount, "total", len(council.Members))
 	}
 
 	return rankings, nil
