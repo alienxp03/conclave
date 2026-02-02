@@ -116,6 +116,17 @@ class ApiClient {
     if (!response.ok) throw new Error('Failed to delete debate');
   }
 
+  async updateDebateTitle(id: string, title: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/debates/${id}/title`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ title }),
+    });
+    if (!response.ok) throw new Error('Failed to update debate title');
+  }
+
   async addDebateFollowUp(id: string, content: string): Promise<void> {
     const response = await fetch(`${API_BASE}/debates/${id}/followup`, {
       method: 'POST',
@@ -158,6 +169,24 @@ class ApiClient {
     }
 
     return response.json();
+  }
+
+  async updateCouncilTitle(id: string, title: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/councils/${id}/title`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ title }),
+    });
+    if (!response.ok) throw new Error('Failed to update council title');
+  }
+
+  async deleteCouncil(id: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/councils/${id}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to delete council');
   }
 
   async addCouncilFollowUp(id: string, content: string): Promise<void> {

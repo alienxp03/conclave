@@ -1,5 +1,6 @@
-import { Link, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api';
 
 export interface NavigationProps {
@@ -9,6 +10,10 @@ export interface NavigationProps {
 
 export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const { data: debates } = useQuery({
     queryKey: ['debates'],
@@ -42,6 +47,88 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
       type: 'council' as const,
     }))
   ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  useEffect(() => {
+    if (!openMenuId) return;
+
+    const handleClick = (event: MouseEvent) => {
+      if (!menuRef.current) {
+        setOpenMenuId(null);
+        return;
+      }
+      if (!menuRef.current.contains(event.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [openMenuId]);
+
+  const invalidateConversations = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['debates'] }),
+      queryClient.invalidateQueries({ queryKey: ['councils'] }),
+    ]);
+  };
+
+  const handleRename = async (item: (typeof allItems)[number], currentTitle: string) => {
+    const nextTitle = window.prompt('Rename conversation', currentTitle);
+    if (nextTitle === null) {
+      setOpenMenuId(null);
+      return;
+    }
+    const trimmed = nextTitle.trim();
+    if (!trimmed || trimmed === currentTitle) {
+      setOpenMenuId(null);
+      return;
+    }
+
+    try {
+      if (item.type === 'debate') {
+        await api.updateDebateTitle(item.id, trimmed);
+      } else {
+        await api.updateCouncilTitle(item.id, trimmed);
+      }
+      await invalidateConversations();
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to rename conversation.');
+    } finally {
+      setOpenMenuId(null);
+    }
+  };
+
+  const handleDelete = async (item: (typeof allItems)[number], isActive: boolean) => {
+    if (item.type === 'debate' && item.read_only) {
+      window.alert('This conversation is read-only and cannot be deleted.');
+      setOpenMenuId(null);
+      return;
+    }
+
+    const confirmed = window.confirm('Delete this conversation? This cannot be undone.');
+    if (!confirmed) {
+      setOpenMenuId(null);
+      return;
+    }
+
+    try {
+      if (item.type === 'debate') {
+        await api.deleteDebate(item.id);
+      } else {
+        await api.deleteCouncil(item.id);
+      }
+      await invalidateConversations();
+      if (isActive) {
+        navigate('/');
+      }
+    } catch (error) {
+      console.error(error);
+      window.alert('Failed to delete conversation.');
+    } finally {
+      setOpenMenuId(null);
+    }
+  };
 
   return (
     <div className={`
@@ -170,36 +257,87 @@ export function Navigation({ isCollapsed, setIsCollapsed }: NavigationProps) {
           const projectLabel = projectName || (item.project_id ? 'Unknown project' : undefined);
           const itemTitle = item.title || item.topic || 'New conversation';
           const itemTooltip = projectLabel ? `${itemTitle} • ${projectLabel}` : itemTitle;
+          const itemKey = `${item.type}-${item.id}`;
+          const isMenuOpen = openMenuId === itemKey;
           return (
-            <Link
-              key={item.id}
-              to={item.type === 'debate' ? `/debates/${item.id}` : `/councils/${item.id}`}
-              className={`block rounded-lg text-sm transition-all duration-200 ${
-                isCollapsed ? 'px-2 py-2' : 'px-3 py-2'
-              } ${
-                isActive
-                  ? 'bg-brand-primary text-[#2b3339] shadow-lg font-bold'
-                  : 'text-[#9da9a0] hover:text-[#d3c6aa] hover:bg-brand-bg'
-              }`}
-              title={itemTooltip}
-            >
-              {isCollapsed ? (
-                <div className="flex justify-center">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                  </svg>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  <div className="text-sm font-medium">{itemTitle}</div>
-                  {projectLabel && (
-                    <div className={`text-[11px] ${isActive ? 'text-[#2b3339]/80' : 'text-[#728072]'}`}>
-                      {projectLabel}
+            <div key={itemKey} className="relative">
+              <Link
+                to={item.type === 'debate' ? `/debates/${item.id}` : `/councils/${item.id}`}
+                className={`block rounded-lg text-sm transition-all duration-200 ${
+                  isCollapsed ? 'px-2 py-2 flex justify-center' : 'px-3 py-2 pr-10'
+                } ${
+                  isActive
+                    ? 'bg-brand-primary text-[#2b3339] shadow-lg font-bold'
+                    : 'text-[#9da9a0] hover:text-[#d3c6aa] hover:bg-brand-bg'
+                }`}
+                title={itemTooltip}
+              >
+                {isCollapsed ? (
+                  <div className="flex justify-center">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                    </svg>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <div className="text-sm font-medium truncate">{itemTitle}</div>
+                    {projectLabel && (
+                      <div className={`text-[11px] ${isActive ? 'text-[#2b3339]/80' : 'text-[#728072]'}`}>
+                        {projectLabel}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Link>
+
+              {!isCollapsed && (
+                <div className="absolute right-2 top-2" ref={isMenuOpen ? menuRef : null}>
+                  <button
+                    type="button"
+                    className={`rounded-md px-2 py-0.5 text-xs font-semibold transition-colors ${
+                      isActive
+                        ? 'text-[#2b3339]/80 hover:text-[#2b3339]'
+                        : 'text-[#859289] hover:text-[#d3c6aa]'
+                    } ${isMenuOpen ? 'bg-brand-bg/40' : 'hover:bg-brand-bg'}`}
+                    aria-label="Conversation options"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setOpenMenuId(isMenuOpen ? null : itemKey);
+                    }}
+                  >
+                    ...
+                  </button>
+                  {isMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-48 rounded-md border border-brand-border bg-brand-card shadow-lg z-20">
+                      <button
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-xs text-[#d3c6aa] hover:bg-brand-bg"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleRename(item, itemTitle);
+                        }}
+                      >
+                        Rename title
+                      </button>
+                      <button
+                        type="button"
+                        className="w-full px-3 py-2 text-left text-xs text-red-300 hover:bg-brand-bg disabled:text-red-300/50"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleDelete(item, isActive);
+                        }}
+                        disabled={item.type === 'debate' && item.read_only}
+                      >
+                        Delete conversation
+                      </button>
                     </div>
                   )}
                 </div>
               )}
-            </Link>
+            </div>
           );
         })}
         {allItems.length === 0 && !isCollapsed && (

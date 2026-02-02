@@ -102,6 +102,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/debates", h.handleAPIDebates)
 	mux.HandleFunc("GET /api/debates/{id}", h.handleAPIDebate)
 	mux.HandleFunc("GET /api/debates/{id}/stream", h.handleDebateStream)
+	mux.HandleFunc("PUT /api/debates/{id}/title", h.handleAPIUpdateDebateTitle)
 	mux.HandleFunc("GET /api/projects", h.handleAPIListProjects)
 	mux.HandleFunc("POST /api/projects", h.handleAPICreateProject)
 	mux.HandleFunc("GET /api/projects/{id}", h.handleAPIGetProject)
@@ -113,6 +114,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/councils", h.handleAPICreateCouncil)
 	mux.HandleFunc("GET /api/councils/{id}", h.handleAPIGetCouncil)
 	mux.HandleFunc("GET /api/councils/{id}/stream", h.handleCouncilStream)
+	mux.HandleFunc("PUT /api/councils/{id}/title", h.handleAPIUpdateCouncilTitle)
+	mux.HandleFunc("DELETE /api/councils/{id}", h.handleAPIDeleteCouncil)
 
 	// New API routes
 	mux.HandleFunc("GET /api/personas", h.handleAPIListPersonas)
@@ -752,6 +755,40 @@ func (h *Handler) handleAPICreateDebate(w http.ResponseWriter, r *http.Request) 
 	h.json(w, debate)
 }
 
+func (h *Handler) handleAPIUpdateDebateTitle(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		h.jsonError(w, "title is required", http.StatusBadRequest)
+		return
+	}
+
+	debate, err := h.storage.GetDebate(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if debate == nil {
+		h.jsonError(w, "debate not found", http.StatusNotFound)
+		return
+	}
+
+	if err := h.storage.UpdateDebateTitle(id, title); err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) handleAPIDeleteDebate(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
@@ -869,6 +906,40 @@ func (h *Handler) handleAPIGetCouncil(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *Handler) handleAPIUpdateCouncilTitle(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.jsonError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		h.jsonError(w, "title is required", http.StatusBadRequest)
+		return
+	}
+
+	council, err := h.storage.GetCouncil(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if council == nil {
+		h.jsonError(w, "council not found", http.StatusNotFound)
+		return
+	}
+
+	if err := h.storage.UpdateCouncilTitle(id, title); err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) handleAPICreateCouncil(w http.ResponseWriter, r *http.Request) {
 	type CreateRequest struct {
 		core.NewCouncilConfig
@@ -905,6 +976,27 @@ func (h *Handler) handleAPICreateCouncil(w http.ResponseWriter, r *http.Request)
 	}
 
 	h.json(w, c)
+}
+
+func (h *Handler) handleAPIDeleteCouncil(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+
+	council, err := h.storage.GetCouncil(id)
+	if err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if council == nil {
+		h.jsonError(w, "council not found", http.StatusNotFound)
+		return
+	}
+
+	if err := h.storage.DeleteCouncil(id); err != nil {
+		h.jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) handleCouncilStream(w http.ResponseWriter, r *http.Request) {
